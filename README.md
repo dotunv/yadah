@@ -43,7 +43,7 @@ the room. Hold the lamp over it.
 `src/engine/` has no React and no canvas. Change how Yadah understands people there; change how
 the room looks and behaves in `src/world/`. Neither needs the other rewritten.
 
-## Seven presences
+## Eight presences
 
 They are not UI. They have behavior, and Yadah learns which ones you form relationships with.
 
@@ -54,10 +54,16 @@ They are not UI. They have behavior, and Yadah learns which ones you form relati
 - **The stranger** avoids you. It stays only for someone who doesn't chase it.
 - **The witness** watches, then replays your last twelve seconds of light.
 - **The seed** becomes what you feed it, and stays that way.
+- **The vigil** is a stack of heavy stones. Near it, the lamp grows sluggish. It asks for something that costs
+  you: both hands held apart for twenty seconds, `Z` and `/` together (or two fingers a hand apart on a phone).
+  It waits until you start, and begins to forget if you let go. A cord of light runs from each hand to the stones
+  and the room gathers into one low sound. If you can't use both hands, one held for twice as long also works,
+  and it says so. Each time you carry it to the end it gains a stone; stay away and they fall. Holding on is a
+  guess Yadah makes about you (*"you hold on when it costs you"*).
 
 ## Guesses, and being wrong
 
-Yadah holds six guesses: *you prefer stillness, you follow what moves, you return to things, you
+Yadah holds seven guesses: *you prefer stillness, you follow what moves, you return to things, you
 don't follow the obvious path, you stay when something doesn't explain itself, your hands stay on the keys.*
 
 A guess needs evidence before it is held. Held guesses are tested: Yadah puts something tempting in

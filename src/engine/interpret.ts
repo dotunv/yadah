@@ -67,6 +67,9 @@ export function step(prev: Profile, sess: Session, o: Obs, now = Date.now()): St
         m.bond += (1 - m.bond) * 0.18
         if (o.id === 'seed') m.growth = clamp(m.growth + 0.18)
         break
+      case 'hold':
+        m.bond += (1 - m.bond) * 0.02 * Math.min(o.ms / 5000, 4)
+        break
       case 'chase':
         m.chased += o.ms / 1000
         m.wary = clamp(m.wary + o.ms / 9000)

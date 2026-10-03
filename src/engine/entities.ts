@@ -25,6 +25,7 @@ export const ENTITIES: EntityDef[] = [
   { id: 'stranger', name: 'the stranger', hue: 295, base: [0.86, 0.18], size: 0.065, opaque: true, still: false, moves: true },
   { id: 'witness', name: 'the witness', hue: 150, base: [0.6, 0.8], size: 0.07, opaque: true, still: true, moves: false },
   { id: 'seed', name: 'the seed', hue: 8, base: [0.37, 0.86], size: 0.055, opaque: true, still: true, moves: false },
+  { id: 'vigil', name: 'the vigil', hue: 100, base: [0.66, 0.11], size: 0.06, opaque: false, still: true, moves: false },
 ]
 
 export const DEF = Object.fromEntries(ENTITIES.map((e) => [e.id, e])) as Record<EntityId, EntityDef>

@@ -111,6 +111,7 @@ export function render(w: World) {
   drawSpecks(w, ctx)
   drawBeacon(w, ctx)
   drawGhost(w, ctx)
+  drawVigil(w, ctx)
   drawWhispers(w, ctx)
   drawReveal(w, ctx)
   drawShock(w, ctx)
@@ -244,7 +245,7 @@ function drawEntity(w: World, ctx: CanvasRenderingContext2D, e: Ent) {
   const dx = e.x - L.x
   const dy = e.y - L.y
   const d = Math.hypot(dx, dy) || 1
-  const len = clamp(2400 / (d + 160) + R * 0.08, 5, 24)
+  const len = clamp(2400 / (d + 160) + R * 0.08, 5, 24) * (e.id === 'vigil' ? 1.5 : 1)
 
   ctx.save()
   ctx.globalAlpha = ease(e.appear)
@@ -442,6 +443,46 @@ function drawEntity(w: World, ctx: CanvasRenderingContext2D, e: Ent) {
       ctx.stroke()
       break
     }
+    case 'vigil': {
+      // stones: one more for every time you have carried it to the end; they fall if you stay away
+      const n = clamp(2 + mem.completions - Math.floor(mem.neglect / 2), 1, 7)
+      const toppled = mem.neglect >= 4
+      const p = enc ? enc.p : 0
+      const r2 = rngOf(5)
+      for (let i = 0; i < n; i++) {
+        const wd = R * (1.55 - i * 0.14)
+        const ht = R * 0.46
+        const y = R * 0.8 - i * ht * 0.92
+        const lean = (r2() - 0.5) * 0.12 * (i + 1) + Math.sin(w.t * 0.4 + i) * 0.004 * w.motion
+        ctx.save()
+        if (toppled) ctx.translate((r2() - 0.5) * R * 2.2, R * 0.55 + (r2() - 0.5) * R * 0.5)
+        else ctx.translate(lean * R * 2, y)
+        ctx.rotate(toppled ? (r2() - 0.5) * 2.4 : lean)
+        const g = ctx.createRadialGradient(ux * wd * 0.3, uy * ht * 0.4 - ht * 0.2, 2, 0, 0, wd * 0.7)
+        g.addColorStop(0, col(0.46, 0.01, w.atm.hue))
+        g.addColorStop(0.7, col(0.24, 0.01, w.atm.hue))
+        g.addColorStop(1, col(0.14, 0.01, w.atm.hue))
+        ctx.fillStyle = g
+        ctx.beginPath()
+        ctx.ellipse(0, 0, wd * 0.5, ht * 0.5, 0, 0, 6.3)
+        ctx.fill()
+        ctx.restore()
+      }
+      noShadow()
+      if (!toppled) {
+        // heat between the stones, rising with how long you have held
+        for (let i = 1; i < n; i++) {
+          const y = R * 0.8 - i * R * 0.46 * 0.92 + R * 0.23
+          ctx.strokeStyle = col(0.82, 0.02 + 0.17 * Math.max(mem.bond, p), 80, (0.12 + 0.8 * p) * ease(e.appear))
+          ctx.lineWidth = 1.5 + 2 * p
+          ctx.beginPath()
+          ctx.moveTo(-R * (0.55 - i * 0.05), y)
+          ctx.lineTo(R * (0.55 - i * 0.05), y)
+          ctx.stroke()
+        }
+      }
+      break
+    }
     case 'seed': {
       const feed = enc ? ((enc.data.feed as number) ?? 0) : 0
       const growth = clamp(mem.growth + feed * 0.07)
@@ -540,7 +581,7 @@ function drawDarkness(w: World, g: Gfx) {
   c.setTransform(dpr, 0, 0, dpr, 0, 0)
   c.globalCompositeOperation = 'source-over'
   c.clearRect(0, 0, W, H)
-  c.fillStyle = col(0.075, 0.006 + w.atm.chroma * 0.4, w.atm.hue, clamp(0.74 + 0.18 * w.dim + 0.08 * w.hush + 0.1 * w.night + (w.asleep ? 0.06 : 0)))
+  c.fillStyle = col(0.075, 0.006 + w.atm.chroma * 0.4, w.atm.hue, clamp(0.74 + 0.18 * w.dim + 0.08 * w.hush + 0.1 * w.night + (w.asleep ? 0.06 : 0) + 0.1 * w.tension))
   c.fillRect(0, 0, W, H)
   c.globalCompositeOperation = 'destination-out'
 
@@ -703,6 +744,73 @@ function drawGhost(w: World, ctx: CanvasRenderingContext2D) {
     ctx.fillStyle = gl
     ctx.beginPath()
     ctx.arc(last.x, last.y, 70, 0, 6.3)
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
+/** The two hands it asks for, and the cord of light between them while you hold. */
+function drawVigil(w: World, ctx: CanvasRenderingContext2D) {
+  const enc = w.enc
+  if (!enc || enc.id !== 'vigil') return
+  const e = w.byId.vigil
+  const p = enc.p
+  const d = enc.data as Record<string, number>
+  const both = d.both === 1
+  const y = w.h - Math.max(54, w.h * 0.08)
+  const caps = [
+    { x: Math.max(54, w.w * 0.06), label: 'z', on: w.held.left || [...w.touches.values()].some((x) => x < w.w * 0.45) },
+    { x: w.w - Math.max(54, w.w * 0.06), label: '/', on: w.held.right || [...w.touches.values()].some((x) => x > w.w * 0.55) },
+  ]
+  const fade = (enc.leaving ? clamp(1 - (w.t - enc.leaveAt) / 1.2) : 1) * ease(clamp(enc.t / 0.8))
+  ctx.save()
+  ctx.globalAlpha = fade
+  // cord: each hand to the stones
+  ctx.lineCap = 'round'
+  for (const c of caps) {
+    const glow = (c.on ? 0.25 : 0) + 0.75 * p
+    ctx.strokeStyle = col(0.9, 0.08 * glow, 85, 0.12 + 0.8 * glow)
+    ctx.lineWidth = 1 + 3 * glow
+    ctx.setLineDash(c.on ? [] : [2, 8])
+    ctx.beginPath()
+    ctx.moveTo(c.x, y)
+    ctx.quadraticCurveTo((c.x + e.x) / 2, y - (y - e.y) * 0.1, e.x, e.y + e.r * e.scale * 0.9)
+    ctx.stroke()
+  }
+  ctx.setLineDash([])
+  // a column of light climbs from the stones as you hold
+  if (p > 0.02) {
+    const h = (e.y - e.r * e.scale) * ease(p)
+    const g = ctx.createLinearGradient(0, e.y - e.r * e.scale, 0, e.y - e.r * e.scale - h)
+    g.addColorStop(0, col(0.92, 0.1, 85, 0.5 * p))
+    g.addColorStop(1, col(0.92, 0.1, 85, 0))
+    ctx.fillStyle = g
+    ctx.fillRect(e.x - 2 - 6 * p, e.y - e.r * e.scale - h, 4 + 12 * p, h)
+  }
+  // the two places to hold
+  for (const c of caps) {
+    ctx.fillStyle = c.on ? col(0.9, 0.1, 85, 0.95) : col(0.2, 0.01, w.atm.hue, 0.85)
+    ctx.strokeStyle = col(0.85, 0.05, 85, c.on ? 1 : 0.55)
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    if (w.coarse) ctx.arc(c.x, y, 30, 0, 6.3)
+    else ctx.roundRect(c.x - 24, y - 24, 48, 48, 9)
+    ctx.fill()
+    ctx.stroke()
+    ctx.fillStyle = c.on ? col(0.15, 0.02, 85) : col(0.85, 0.05, 85, 0.9)
+    ctx.font = `700 22px "Bricolage Grotesque Variable", system-ui, sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(w.coarse ? '●' : c.label, c.x, y + 1)
+  }
+  if (both && p > 0.02) {
+    ctx.globalCompositeOperation = 'lighter'
+    const gl = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.r * e.scale * (2 + 2 * p))
+    gl.addColorStop(0, col(0.9, 0.1, 85, 0.35 * p))
+    gl.addColorStop(1, col(0.9, 0.1, 85, 0))
+    ctx.fillStyle = gl
+    ctx.beginPath()
+    ctx.arc(e.x, e.y, e.r * e.scale * (2 + 2 * p), 0, 6.3)
     ctx.fill()
   }
   ctx.restore()

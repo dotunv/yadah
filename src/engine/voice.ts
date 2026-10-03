@@ -54,6 +54,13 @@ const V: Record<EntityId, Lines> = {
     bonded: 'it saw you before you saw it.',
     done: 'it showed you yourself.',
   },
+  vigil: {
+    first: 'it asks for both hands, held apart.',
+    again: 'it remembers the weight.',
+    bonded: 'you carry it well.',
+    done: 'you held.',
+    extra: { left: 'it will wait.', single: 'or hold it with one hand, for longer.' },
+  },
   seed: {
     first: 'it becomes what you feed it.',
     again: 'it has changed since you were here.',
@@ -62,10 +69,10 @@ const V: Record<EntityId, Lines> = {
   },
 }
 
-export const say = (id: EntityId, m: Memory, kind: 'touch' | 'done' | 'slip' | 'left' | 'empty'): string => {
+export const say = (id: EntityId, m: Memory, kind: 'touch' | 'done' | 'slip' | 'left' | 'empty' | 'single'): string => {
   const v = V[id]
   if (kind === 'done') return v.done
-  if (kind === 'slip' || kind === 'left' || kind === 'empty') return v.extra?.[kind] ?? v.again
+  if (kind === 'slip' || kind === 'left' || kind === 'empty' || kind === 'single') return v.extra?.[kind] ?? v.again
   if (m.touches <= 1) return v.first
   if (id === 'stranger' && m.chased > 6 && m.bond < 0.4) return v.again
   return m.bond > 0.5 ? v.bonded : v.again

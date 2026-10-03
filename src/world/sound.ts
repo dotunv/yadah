@@ -15,6 +15,7 @@ const NOTE: Record<EntityId, number> = {
   stranger: 196,
   witness: 220,
   seed: 261.63,
+  vigil: 82.41,
 }
 
 export class Sound {
@@ -23,6 +24,8 @@ export class Sound {
   private tone?: BiquadFilterNode
   private voices = {} as Record<EntityId, { g: GainNode; a: OscillatorNode; b: OscillatorNode }>
   private swell = 0
+  private pad?: GainNode
+  private tension = 0
   muted = false
 
   constructor() {
@@ -103,6 +106,7 @@ export class Sound {
         o.start()
       }
       pad.connect(tone)
+      this.pad = pad
       pad.gain.setTargetAtTime(this.muted ? 0 : 0.05, ctx.currentTime, 2.5)
     } catch {
       /* no audio: the room is silent and nothing else changes */
@@ -129,8 +133,16 @@ export class Sound {
       const target = (0.002 + bond[id] * 0.05 + prox[id] * 0.03 * (0.4 + 0.6 * (1 - hush))) * (1 + this.swell * 3) * (1 - 0.8 * sleep)
       v.g.gain.setTargetAtTime(target, t, 0.35)
     }
-    this.tone?.frequency.setTargetAtTime((380 + Math.min(1, speed / 900) * 900 + this.swell * 1400) * (1 - 0.5 * sleep), t, 0.3)
+    this.tone?.frequency.setTargetAtTime((380 + Math.min(1, speed / 900) * 900 + this.swell * 1400) * (1 - 0.5 * sleep) * (1 - 0.5 * this.tension), t, 0.3)
     this.swell *= 0.985
+  }
+
+  /** While something heavy is being held, the room gathers into one low sound. 0..1. */
+  setTension(p: number) {
+    const ctx = this.ctx
+    if (!ctx || this.muted || !this.pad) return
+    this.tension = p
+    this.pad.gain.setTargetAtTime(0.05 + 0.2 * p, ctx.currentTime, 0.4)
   }
 
   /** A soft pluck of one presence's note. */

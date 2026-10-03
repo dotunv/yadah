@@ -6,10 +6,10 @@
  * Nothing in /engine imports React or touches the DOM (tracker.ts aside).
  */
 
-export const ENTITY_IDS = ['listener', 'wanderer', 'mirror', 'archivist', 'stranger', 'witness', 'seed'] as const
+export const ENTITY_IDS = ['listener', 'wanderer', 'mirror', 'archivist', 'stranger', 'witness', 'seed', 'vigil'] as const
 export type EntityId = (typeof ENTITY_IDS)[number]
 
-export const HYP_IDS = ['stillness', 'pursuit', 'return', 'offpath', 'patience', 'hands'] as const
+export const HYP_IDS = ['stillness', 'pursuit', 'return', 'offpath', 'patience', 'hands', 'endure'] as const
 export type HypId = (typeof HYP_IDS)[number]
 
 /** What the world remembers about one entity's relationship with this person. */
@@ -48,7 +48,7 @@ export interface Mark {
   dead?: boolean
 }
 
-export type MisreadKind = 'afraid' | 'tired' | 'vanity' | 'looking' | 'light'
+export type MisreadKind = 'afraid' | 'tired' | 'vanity' | 'looking' | 'light' | 'strain'
 
 /** Something Yadah said about *why* you did something. Confident, fluent, possibly wrong. */
 export interface Misread {
@@ -114,6 +114,8 @@ export type Obs =
   | { t: 'chase'; id: EntityId; ms: number }
   | { t: 'slip'; id: EntityId }
   | { t: 'complete'; id: EntityId }
+  /** How long both hands were held, and whether it was held to the end. */
+  | { t: 'hold'; id: EntityId; ms: number; done: boolean }
   | { t: 'leave'; id: EntityId; ms: number }
   | { t: 'mark'; mark: Omit<Mark, 'visit' | 'life' | 'dead'> }
   | { t: 'renew'; index: number }

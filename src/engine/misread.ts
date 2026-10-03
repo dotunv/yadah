@@ -43,6 +43,11 @@ export const MISREADS: Record<MisreadKind, MisreadDef> = {
     line: () => 'you were looking for something.',
     claim: () => 'You were looking for something.',
   },
+  strain: {
+    kind: 'strain',
+    line: () => 'that hurt you.',
+    claim: () => 'That hurt you.',
+  },
   light: {
     kind: 'light',
     line: () => 'you stopped because of the light.',
@@ -57,5 +62,6 @@ export function misreadFor(trigger: 'leave' | 'complete' | 'mark', id: EntityId 
   if (id === 'listener') return 'tired'
   if (id === 'mirror') return 'vanity'
   if (id === 'witness') return 'looking'
+  if (id === 'vigil') return 'strain'
   return null
 }

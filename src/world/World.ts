@@ -18,7 +18,7 @@ export interface WorldHooks {
   beacon?: (v: boolean) => void
 }
 
-const ENC_LEN: Record<EntityId, number> = { listener: 6, wanderer: 8, mirror: 3500, archivist: 3, stranger: 7, witness: 12, seed: 4 }
+const ENC_LEN: Record<EntityId, number> = { listener: 6, wanderer: 8, mirror: 3500, archivist: 3, stranger: 7, witness: 12, seed: 4, vigil: 20 }
 
 /**
  * The room. A continuous simulation that never stops: things breathe, drift,
@@ -52,6 +52,12 @@ export class World {
   ignite = 0
   sound = new Sound()
   private hinted = new Set<string>()
+  /** Which of the two held keys are down, and where fingers are. The vigil needs both hands. */
+  held = { left: false, right: false }
+  readonly touches = new Map<number, number>()
+  /** 0..1 — how far the vigil has been held. Gathers the room into stillness. */
+  tension = 0
+  readonly coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
   private noteCount = 0
   private idleHinted = false
   /** 0..1 — how late it is. Smoothed so dusk arrives, not flips. */
@@ -172,6 +178,7 @@ export class World {
   private bind() {
     const c = this.canvas
     const onMove = (e: PointerEvent) => {
+      if (this.touches.has(e.pointerId)) this.touches.set(e.pointerId, e.clientX)
       const r = c.getBoundingClientRect()
       this.lamp.tx = e.clientX - r.left
       this.lamp.ty = e.clientY - r.top
@@ -186,6 +193,7 @@ export class World {
     }
     const onDown = (e: PointerEvent) => {
       this.sound.start()
+      if (e.pointerType === 'touch') this.touches.set(e.pointerId, e.clientX)
       const r = c.getBoundingClientRect()
       this.lamp.tx = e.clientX - r.left
       this.lamp.ty = e.clientY - r.top
@@ -197,10 +205,18 @@ export class World {
       }
       this.press('pointer')
     }
-    const onUp = () => (this.lamp.down = false)
+    const onUp = (e: PointerEvent) => {
+      this.touches.delete(e.pointerId)
+      this.lamp.down = this.touches.size > 0 ? this.lamp.down : false
+    }
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest?.('.debug')) return
       this.sound.start()
+      if (e.code === 'KeyZ') this.held.left = true
+      if (e.code === 'Slash') {
+        this.held.right = true
+        if (this.enc?.id === 'vigil') e.preventDefault()
+      }
       const arrows: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
       if (arrows[e.key]) {
         e.preventDefault()
@@ -225,20 +241,31 @@ export class World {
     }
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === ' ') this.lamp.down = false
+      if (e.code === 'KeyZ') this.held.left = false
+      if (e.code === 'Slash') this.held.right = false
+    }
+    const onBlur = () => {
+      this.held.left = this.held.right = false
+      this.lamp.down = false
+      this.touches.clear()
     }
     const onResize = () => this.resize()
     c.addEventListener('pointermove', onMove, { passive: true })
     c.addEventListener('pointerdown', onDown)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
     window.addEventListener('keydown', onKey)
     window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
     window.addEventListener('resize', onResize)
     this.cleanup.push(() => {
       c.removeEventListener('pointermove', onMove)
       c.removeEventListener('pointerdown', onDown)
       window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
       window.removeEventListener('resize', onResize)
     })
   }
@@ -258,7 +285,7 @@ export class World {
     }
     if (this.enc && !this.enc.leaving) {
       const e = this.byId[this.enc.id]
-      if (this.enc.id !== 'seed' && this.enc.id !== 'wanderer' && Math.hypot(this.lamp.x - e.x, this.lamp.y - e.y) > e.r * e.scale * 3.4 + 120) this.leave()
+      if (this.enc.id !== 'seed' && this.enc.id !== 'vigil' && this.enc.id !== 'wanderer' && Math.hypot(this.lamp.x - e.x, this.lamp.y - e.y) > e.r * e.scale * 3.4 + 120) this.leave()
       return
     }
     // nearest thing within reach of the lamp
@@ -352,14 +379,26 @@ export class World {
 
   private leave() {
     if (!this.enc) return
+    this.endVigil()
     this.enc.leaving = true
     this.enc.leaveAt = this.t
+  }
+
+  /** Report what was carried, whether or not it was carried to the end. */
+  private endVigil() {
+    const enc = this.enc
+    if (!enc || enc.id !== 'vigil' || enc.data.reported) return
+    enc.data.reported = true
+    const ms = ((enc.data.total as number) ?? 0) * 1000
+    if (ms > 500) this.obs({ t: 'hold', id: 'vigil', ms, done: enc.done })
+    this.sound.setTension(0)
   }
 
   private updateEnc(dt: number) {
     const enc = this.enc
     if (!enc) {
       this.dim = lerp(this.dim, 0, 1 - Math.exp(-dt * 1.5))
+      this.tension = lerp(this.tension, 0, 1 - Math.exp(-dt * 2))
       return
     }
     const e = this.byId[enc.id]
@@ -420,17 +459,50 @@ export class World {
           d.feed = L.down ? (d.feed ?? 0) + dt : d.feed ?? 0
           enc.p = d.feed / len
           break
+        case 'vigil': {
+          // It waits for both hands: one key at each end of the keyboard, or two fingers a hand apart.
+          const fl = [...this.touches.values()].some((x) => x < this.w * 0.45)
+          const fr = [...this.touches.values()].some((x) => x > this.w * 0.55)
+          const both = (this.held.left || fl) && (this.held.right || fr)
+          const solo = !both && (L.down || this.held.left || this.held.right) && this.touches.size < 2
+          d.both = both ? 1 : 0
+          d.solo = solo ? 1 : 0
+          if (both) {
+            d.held = (d.held ?? 0) + dt
+            d.idle = 0
+          } else if (solo) {
+            d.held = (d.held ?? 0) + dt * 0.5
+            d.idle = 0
+          } else {
+            d.held = Math.max(0, (d.held ?? 0) - dt * 0.6)
+            d.idle = (d.idle ?? 0) + dt
+          }
+          d.total = (d.total ?? 0) + (both || solo ? dt : 0)
+          enc.p = (d.held ?? 0) / len
+          if ((d.idle ?? 0) > 8 && (d.total ?? 0) < 1 && !this.hinted.has('vigil-solo')) {
+            this.hinted.add('vigil-solo')
+            this.whisperAt(e, say('vigil', this.brain.profile.entities.vigil, 'single'))
+          }
+          if ((d.idle ?? 0) > 14) {
+            this.whisperAt(e, say('vigil', this.brain.profile.entities.vigil, 'left'))
+            this.leave()
+          }
+          break
+        }
       }
       if (enc.p >= 1) {
         enc.p = 1
         enc.done = true
         enc.leaveAt = this.t + 3
+        this.endVigil()
         this.obs({ t: 'complete', id: enc.id })
         this.sound.chime(enc.id)
         if (this.brain.session.touched.length < 3) this.nudge('others', 'there are others.', this.w * 0.5, this.h * 0.14, 3)
         this.whisperAt(e, say(enc.id, this.brain.profile.entities[enc.id], 'done'))
       }
     }
+    this.tension = lerp(this.tension, enc.id === 'vigil' && !enc.leaving ? enc.p : 0, 1 - Math.exp(-dt * 3))
+    if (enc.id === 'vigil' && !enc.leaving) this.sound.setTension(this.tension)
     if (enc.done && !enc.leaving && this.t >= enc.leaveAt) this.leave()
     if (enc.leaving && this.t - enc.leaveAt > 1.8) {
       this.enc = null
@@ -467,8 +539,20 @@ export class World {
   }
 
   say(text: string, x: number, y: number, o: { t0?: number; dur?: number; size?: number; tint?: number; align?: 'left' | 'center' } = {}) {
+    // lines that would land on top of one another are laid beneath each other
+    const t0 = o.t0 ?? this.t
+    const size = o.size ?? 22
+    const span = text.length * size * 0.42
+    for (let guard = 0; guard < 6; guard++) {
+      const clash = this.whispers.find(
+        (q) => Math.abs(q.y - y) < Math.max(q.size, size) * 1.25 && q.x < x + span && x < q.x + q.text.length * q.size * 0.42 && t0 < q.t0 + q.dur && q.t0 < t0 + (o.dur ?? 5.5),
+      )
+      if (!clash) break
+      y += Math.max(clash.size, size) * 1.4
+      if (y > this.h - 30) y = 50 + guard * size * 1.4
+    }
     const w: Whisper = {
-      text, x, y, t0: o.t0 ?? this.t, dur: o.dur ?? 5.5, size: o.size ?? 22,
+      text, x, y, t0, dur: o.dur ?? 5.5, size,
       rot: (this.rand() - 0.5) * 0.04, align: o.align ?? 'left', tint: o.tint ?? -1,
     }
     this.whispers.push(w)
@@ -543,6 +627,7 @@ export class World {
       stranger: 'don’t chase it.',
       witness: 'it is looking at you.',
       seed: 'it wants to be touched.',
+      vigil: 'it is heavier than it looks.',
     }
     if (near.acc > 0.7 && !this.hinted.has('near:' + e.id)) {
       this.hinted.add('near:' + e.id)
@@ -618,7 +703,10 @@ export class World {
     this.motion = (this.reduced ? 0.4 : 1) * lerp(1, 0.04, this.hush)
 
     // the lamp: a small light you carry
-    const lk = 1 - Math.exp(-dt * 14)
+    // near the vigil the lamp grows heavy, before you have touched anything
+    const vg = this.byId.vigil
+    const heavy = vg && vg.appear > 0.5 && !this.enc ? clamp(1 - Math.hypot(L.x - vg.x, L.y - vg.y) / (vg.r * 3.6)) : 0
+    const lk = (1 - Math.exp(-dt * 14)) * (1 - 0.6 * heavy)
     const ox = L.x
     const oy = L.y
     L.x += (L.tx - L.x) * lk
@@ -962,6 +1050,7 @@ export class World {
         break
       }
       case 'seed':
+      case 'vigil':
         if (inEnc) {
           tx = cx
           ty = cy

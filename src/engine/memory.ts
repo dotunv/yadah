@@ -45,6 +45,18 @@ export function createSession(now = Date.now()): Session {
  * little further away, what you left behind is still there, and Yadah holds
  * its old guesses a little less tightly, so it can change its mind.
  */
+/**
+ * Profiles saved before something existed still load: anything missing is
+ * filled in as if it had always been there but never touched.
+ */
+export function migrate(p: Profile): Profile {
+  const entities = { ...p.entities }
+  for (const id of ENTITY_IDS) entities[id] = { ...blankMemory(), ...entities[id] }
+  const hyps = { ...p.hyps }
+  for (const id of HYP_IDS) hyps[id] = { ...blankHyp(), ...hyps[id] }
+  return { ...p, entities, hyps, misreads: p.misreads ?? [], marks: p.marks.map((mk) => ({ ...mk, life: mk.life ?? 1 })) }
+}
+
 /** Days since the previous visit, for how out of practice Yadah is. */
 export const daysAway = (p: Profile, now = Date.now()) => Math.max(0, (now - p.lastVisitAt) / 86_400_000)
 
@@ -54,7 +66,8 @@ export const daysAway = (p: Profile, now = Date.now()) => Math.max(0, (now - p.l
  * and are lost, a neglected seed closes. Yadah also holds its old guesses a
  * little more loosely, so it can change its mind.
  */
-export function beginVisit(prev: Profile, now = Date.now()): Profile {
+export function beginVisit(raw: Profile, now = Date.now()): Profile {
+  const prev = migrate(raw)
   const away = daysAway(prev, now)
   const p: Profile = {
     ...prev,

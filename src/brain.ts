@@ -1,5 +1,5 @@
 import { heldBeliefs, readyToSpeak, step } from './engine/interpret'
-import { beginVisit, createProfile, createSession, daysAway } from './engine/memory'
+import { beginVisit, createProfile, createSession, daysAway, migrate } from './engine/memory'
 import { hourNow, night } from './engine/time'
 import { seedProfile, type Persona } from './engine/personas'
 import { relate, type WorldIntent } from './engine/relationship'
@@ -36,7 +36,8 @@ export class Brain {
   private lastNotify = 0
 
   async load() {
-    const saved = await loadProfile()
+    const loaded = await loadProfile()
+    const saved = loaded ? migrate(loaded) : undefined
     this.returning =
       !!saved && (saved.activeMs >= 5000 || saved.marks.length > 0 || Object.values(saved.entities).some((m) => m.touches > 0))
     this.away = saved ? daysAway(saved) : 0

@@ -107,6 +107,19 @@ export const HYPS: HypDef[] = [
       return {}
     },
   },
+  {
+    id: 'endure',
+    claim: 'You hold on when it costs you.',
+    opposite: 'You let go when it costs you.',
+    doubt: 'I thought you would hold on.',
+    weigh: (o) => {
+      if (o.t !== 'hold') return {}
+      if (o.done) return { support: 2 }
+      if (o.ms >= 4000) return { support: cap(o.ms / 20000, 0.8) }
+      if (o.ms > 500) return { contra: 0.5 }
+      return {}
+    },
+  },
 ]
 
 export const HYP = Object.fromEntries(HYPS.map((h) => [h.id, h])) as Record<HypId, HypDef>
