@@ -10,6 +10,7 @@ import { giftPos, render } from './draw'
 import type { Dir, PlaceId } from '../engine/places'
 import { startMode, updateMode } from './depth'
 import { controlLamp, fire, updateEvents, type Ghost } from './events'
+import { deskOf } from './desk'
 import type { Site } from '../engine/sites'
 import { dirToward, dive, doorPoint, doorsOf, inPond, presentOf, relocate, travel, updateHouse } from './house'
 import { Sound } from './sound'
@@ -352,7 +353,8 @@ export class World {
       this.lamp.down = this.touches.size > 0 ? this.lamp.down : false
     }
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest?.('.debug')) return
+      // typing in the desk, or pressing a link or button in a window, is not the lamp
+      if ((e.target as HTMLElement)?.closest?.('.debug, .desk, .portal')) return
       this.sound.start()
       if (e.code === 'KeyZ') this.held.left = true
       if (e.code === 'Slash') {
@@ -434,6 +436,14 @@ export class World {
     if (this.place === 'garden' && inPond(this, this.lamp.x, this.lamp.y)) {
       dive(this)
       return
+    }
+    // the desk: a firm press on the table opens the board
+    if (this.place === 'hall' && !this.deskOpen) {
+      const d = deskOf(this)
+      if (Math.abs(this.lamp.x - d.x) < d.rx && Math.abs(this.lamp.y - d.y) < d.ry) {
+        this.openDesk()
+        return
+      }
     }
     // a door under the lamp
     for (const d of doorsOf(this)) {

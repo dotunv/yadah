@@ -82,6 +82,10 @@ export default function App() {
   useSyncExternalStore(board.subscribe, board.snapshot)
 
   useEffect(() => {
+    if (site) document.querySelector<HTMLElement>('.portal a')?.focus()
+  }, [site])
+
+  useEffect(() => {
     if (!site && !desk) return
     const k = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
@@ -99,7 +103,7 @@ export default function App() {
 
   return (
     <div className="room" data-phase={phase}>
-      <canvas ref={canvas} className="world" aria-label="A dark room with seven presences in it. Move the light, or use the arrow keys." />
+      <canvas ref={canvas} className="world" aria-label="A dark room with seven presences in it. Move the light, or use the arrow keys. Press Enter on the pond or the table to open them." />
       <div className="grain" aria-hidden />
 
       <nav className="sr" aria-label="Presences in the room">
@@ -115,6 +119,8 @@ export default function App() {
               Go to {PLACES[to].name}
             </button>
           ))}
+        {place === 'garden' && <button onClick={() => world?.dive()}>Look into the pond</button>}
+        {place === 'hall' && <button onClick={() => world?.openDesk()}>Go to the desk</button>}
         {beacon && <button onClick={() => world?.startReveal()}>Yadah has something to tell you</button>}
       </nav>
       <div className="sr" aria-live="polite">
@@ -175,7 +181,6 @@ export default function App() {
               href={site.url}
               target="_blank"
               rel="noopener noreferrer"
-              autoFocus
               onClick={() => {
                 brain.observe({ t: 'chapter', chapter: `site:${site.id}` })
                 brain.observe({ t: 'diary', text: `you went through the pond, to ${site.name}.` })
@@ -209,7 +214,7 @@ export default function App() {
               }
             }}
           >
-            <input value={draft} onChange={(e) => setDraft(e.target.value.slice(0, MAX_LEN))} placeholder="leave a line for whoever comes next" maxLength={MAX_LEN} aria-label="A note to pin" />
+            <input id="desk-note" autoFocus value={draft} onChange={(e) => setDraft(e.target.value.slice(0, MAX_LEN))} placeholder="leave a line for whoever comes next" maxLength={MAX_LEN} aria-label="A note to pin" />
             <button type="submit" disabled={!draft.trim()}>
               {pinned ? 'pinned' : 'pin it'}
             </button>
