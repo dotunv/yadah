@@ -855,7 +855,7 @@ export class World {
     }
 
     // someone who hasn't moved the light yet needs to be told it can be moved
-    if (!L.moved && this.t > 7 && !this.idleHinted && this.phase === 'world') {
+    if (!L.moved && this.t > 7 && !this.idleHinted && this.phase === 'world' && ENTITIES.every((d) => p.entities[d.id].touches === 0)) {
       this.idleHinted = true
       this.say('move the light.', this.w * 0.5 - 70, this.h * 0.74, { t0: this.t, dur: 6, size: 24 })
     }

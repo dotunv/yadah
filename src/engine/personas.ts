@@ -24,39 +24,39 @@ export const PERSONAS: Persona[] = [
     id: 'still',
     label: 'The Still One',
     blurb: 'Stays near quiet things. Waits for the strangers to come.',
-    bonds: { listener: 0.85, witness: 0.65, stranger: 0.4, seed: 0.3, archivist: 0.2 },
+    bonds: { listener: 0.85, witness: 0.65, stranger: 0.4, vigil: 0.45, seed: 0.3, archivist: 0.2 },
     wary: 0.2,
-    hyps: { stillness: [8, 1], patience: [7, 1], return: [3, 1], offpath: [1, 2] },
+    hyps: { stillness: [8, 1], patience: [7, 1], return: [3, 1], offpath: [1, 2], endure: [4, 1] },
   },
   {
     id: 'chaser',
     label: 'The Chaser',
-    blurb: 'Follows whatever moves. Scares the stranger off.',
+    blurb: 'Follows whatever moves, and lets go of anything heavy.',
     bonds: { wanderer: 0.9, mirror: 0.45, stranger: 0.15, seed: 0.1 },
     wary: 0.85,
     chased: 56,
-    hyps: { pursuit: [9, 1], stillness: [1, 6], patience: [1, 4], offpath: [3, 2] },
+    hyps: { pursuit: [9, 1], stillness: [1, 6], patience: [1, 4], offpath: [3, 2], endure: [0, 6] },
   },
   {
     id: 'returner',
     label: 'The Returner',
     blurb: 'Goes back to the same few things, again and again.',
-    bonds: { archivist: 0.85, seed: 0.7, listener: 0.5, mirror: 0.2 },
-    hyps: { return: [10, 0], patience: [4, 1], offpath: [1, 3], stillness: [3, 1] },
+    bonds: { archivist: 0.85, seed: 0.7, vigil: 0.7, listener: 0.5, mirror: 0.2 },
+    hyps: { return: [10, 0], patience: [4, 1], offpath: [1, 3], stillness: [3, 1], endure: [6, 0] },
   },
   {
     id: 'drifter',
     label: 'The Drifter',
     blurb: 'Never takes the nearest thing. Never comes back.',
-    bonds: { mirror: 0.4, seed: 0.35, witness: 0.35, wanderer: 0.3, stranger: 0.3, listener: 0.3, archivist: 0.3 },
-    hyps: { offpath: [9, 0], return: [0, 5], pursuit: [3, 2] },
+    bonds: { mirror: 0.4, seed: 0.35, witness: 0.35, wanderer: 0.3, stranger: 0.3, listener: 0.3, archivist: 0.3, vigil: 0.15 },
+    hyps: { offpath: [9, 0], return: [0, 5], pursuit: [3, 2], endure: [1, 3] },
   },
   {
     id: 'keys',
     label: 'The Keyboardist',
-    blurb: 'Never reaches for the pointer.',
-    bonds: { listener: 0.5, archivist: 0.6, seed: 0.5, witness: 0.4 },
-    hyps: { hands: [10, 0], return: [4, 1], patience: [3, 1] },
+    blurb: 'Never reaches for the pointer. Carries the vigil to the end.',
+    bonds: { listener: 0.5, archivist: 0.6, seed: 0.5, witness: 0.4, vigil: 0.85 },
+    hyps: { hands: [10, 0], return: [4, 1], patience: [3, 1], endure: [8, 0] },
     keys: 80,
   },
 ]
@@ -81,6 +81,8 @@ export function seedProfile(persona: Persona, now = Date.now()): Profile {
     if (id === 'stranger') m.wary = persona.wary ?? 0.5
     if (id === 'stranger' || id === 'wanderer') m.chased = persona.chased ?? 0
     if (id === 'seed') m.growth = 0.2 + bond * 0.7
+    // the vigil gains a stone for every time it was carried to the end
+    if (id === 'vigil') m.completions = Math.round(bond * 5)
   }
   for (const id of HYP_IDS) {
     const [s, c] = persona.hyps[id] ?? [0, 0]
