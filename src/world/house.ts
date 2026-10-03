@@ -105,6 +105,19 @@ export function relocate(w: World, e: Ent, to: PlaceId) {
       return
     }
   }
+  settle(w, e, to)
+}
+
+/**
+ * The other half of relocate(): actually put it in the other room. This is what
+ * runs when it reaches the door, so it must never start another walk — otherwise
+ * it re-arms e.leaving at the doorway it is already standing in, and stands
+ * there forever.
+ */
+export function settle(w: World, e: Ent, to: PlaceId) {
+  if (e.place === to) return
+  if (w.brain.profile.entities[e.id].gone) return
+  const from = e.place
   e.place = to
   e.visit = null
   if (to === w.place) {

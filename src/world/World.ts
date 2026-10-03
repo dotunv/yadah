@@ -12,7 +12,7 @@ import { startMode, updateMode } from './depth'
 import { controlLamp, fire, updateEvents, type Ghost } from './events'
 import { deskOf } from './desk'
 import type { Site } from '../engine/sites'
-import { dirToward, dive, doorPoint, doorsOf, inPond, presentOf, relocate, travel, updateHouse } from './house'
+import { dirToward, dive, doorPoint, doorsOf, inPond, presentOf, settle, travel, updateHouse } from './house'
 import { Sound } from './sound'
 import { clamp, ease, lerp, rngOf, type Ent, type Enc, type Lamp, type Mote, type Speck, type Title, type Whisper } from './scene'
 
@@ -136,8 +136,8 @@ export class World {
   wakeAcc = 0
   lastMisread = -60
   visitMisreads = 0
-  pending: { index: number; kind: keyof typeof MISREADS; entity: EntityId | null; t0: number }[] = []
-  renewAcc: Record<number, number> = {}
+  pending: { id: string; kind: keyof typeof MISREADS; entity: EntityId | null; t0: number }[] = []
+  renewAcc: Record<string, number> = {}
   pruned = false
 
   // reveal
@@ -152,6 +152,8 @@ export class World {
 
   // memory made visible
   markAcc = 0
+  /** Seconds the lamp has held still in one spot — the weight of the next mark. */
+  markDwell = 0
   lastTouch: { x: number; y: number } | null = null
   meet: { x: number; y: number; until: number } | null = null
   lastProbe = -30
@@ -606,11 +608,11 @@ export class World {
           const marks = this.brain.profile.marks
           const read = (d.read ?? 0) as number
           let got = read
-          const seen = (enc.data.seen as Record<number, boolean>) ?? (enc.data.seen = {})
-          marks.forEach((m, i) => {
+          const seen = (enc.data.seen as Record<string, boolean>) ?? (enc.data.seen = {})
+          marks.forEach((m) => {
             if ((m.place ?? 'hall') !== this.place) return
-            if (!seen[i] && Math.hypot(m.x * this.w - L.x, m.y * this.h - L.y) < 46) {
-              seen[i] = true
+            if (!seen[m.id] && Math.hypot(m.x * this.w - L.x, m.y * this.h - L.y) < 46) {
+              seen[m.id] = true
               got++
               const ago = this.brain.profile.visits - m.visit
               this.say(ago <= 0 ? 'you stayed here, just now.' : ago === 1 ? 'you stayed here, last time.' : 'you stayed here, once.', m.x * this.w + 14, m.y * this.h - 10, { t0: this.t, dur: 3.4, size: 20 })
@@ -772,11 +774,13 @@ export class World {
     const text = def.line(id)
     this.brain.observe({ t: 'misread', misread: { kind, entity: id, text, claim: def.claim(id), at: Date.now() } })
     this.diary(`I said “${text}” I don’t know if it was true.`)
-    const index = this.brain.profile.misreads.length - 1
+    // remember which one this was by id: older misreads get trimmed away, so a
+    // position would drift onto some other line by the time you contradicted it
+    const misreadId = this.brain.profile.misreads[this.brain.profile.misreads.length - 1]?.id
     const e = id ? this.byId[id] : null
     if (e) this.whisperAt(e, text, 1.2)
     else this.say(text, clamp(this.lamp.x - 120, 20, this.w - 380), clamp(this.lamp.y - 70, 40, this.h - 40), { t0: this.t + 1.2, dur: 5, size: 22 })
-    if (def.correction) this.pending.push({ index, kind, entity: id, t0: this.t })
+    if (def.correction && misreadId) this.pending.push({ id: misreadId, kind, entity: id, t0: this.t })
   }
 
   checkCorrections() {
@@ -791,7 +795,7 @@ export class World {
         hit = Math.hypot(L.x - e.x, L.y - e.y) < e.r * e.scale * 2 + 50
       } else if (c.by === 'fast') hit = L.speed > 450 && age > 1.5
       if (!hit) return true
-      this.brain.observe({ t: 'correct', index: p.index, hyp: c.hyp })
+      this.brain.observe({ t: 'correct', id: p.id, hyp: c.hyp })
       const e = p.entity ? this.byId[p.entity] : null
       if (e) this.whisperAt(e, c.says)
       else this.say(c.says, clamp(L.x - 80, 20, this.w - 300), clamp(L.y - 70, 40, this.h - 40), { dur: 4.5, size: 22 })
@@ -1044,13 +1048,14 @@ export class World {
     // the places you came back to are kept; the rest go dark, then are lost
     const L = this.lamp
     if (this.phase === 'world' && L.moved && L.speed < 70) {
-      this.brain.profile.marks.forEach((m, i) => {
+      // keyed by mark id, not position: prune() reorders this array
+      this.brain.profile.marks.forEach((m) => {
         if ((m.place ?? 'hall') !== this.place) return
         if (Math.hypot(m.x * this.w - L.x, m.y * this.h - L.y) < 50) {
-          this.renewAcc[i] = (this.renewAcc[i] ?? 0) + dt
-          if (this.renewAcc[i] > 1.2) {
-            this.renewAcc[i] = 0
-            this.brain.observe({ t: 'renew', index: i })
+          this.renewAcc[m.id] = (this.renewAcc[m.id] ?? 0) + dt
+          if (this.renewAcc[m.id] > 1.2) {
+            this.renewAcc[m.id] = 0
+            this.brain.observe({ t: 'renew', id: m.id })
           }
         }
       })
@@ -1356,7 +1361,7 @@ export class World {
       if (Math.hypot(e.x - dx, e.y - dy) < 70) {
         const to = e.leaving.to
         e.leaving = null
-        relocate(this, e, to)
+        settle(this, e, to)
         return
       }
     }
@@ -1450,10 +1455,18 @@ export class World {
     const L = this.lamp
     if (this.phase !== 'world' || this.enc || !L.moved) {
       this.markAcc = 0
+      this.markDwell = 0
       return
     }
     if (L.speed < 25) this.markAcc += dt
-    else this.markAcc = Math.min(this.markAcc, 0.5) * 0
+    else {
+      this.markAcc = 0
+      this.markDwell = 0
+    }
+    // How long the lamp has actually stayed in one spot. This is the mark's
+    // weight, so it has to be measured across the whole stillness rather than
+    // read off the emission threshold — otherwise every mark weighs the same.
+    if (this.markAcc > 0) this.markDwell += dt
     if (this.markAcc > 1.6) {
       let near: EntityId | null = null
       let bd = 230
@@ -1464,8 +1477,9 @@ export class World {
           near = e.id
         }
       }
-      this.obs({ t: 'mark', mark: { x: L.x / this.w, y: L.y / this.h, w: clamp(this.markAcc / 6, 0.2, 1), e: near, place: this.place } })
+      this.obs({ t: 'mark', mark: { x: L.x / this.w, y: L.y / this.h, w: clamp(this.markDwell / 8, 0.2, 1), e: near, place: this.place } })
       this.specks.push({ x: L.x, y: L.y, to: 'archivist', letter: 0, t0: this.t })
+      // a pause between marks, so one long stillness leaves several, not one
       this.markAcc = -3
     }
   }

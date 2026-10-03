@@ -1,5 +1,5 @@
 import { HYPS, confidence, evidenceCount } from './hypotheses'
-import { ENTITY_IDS, HYP_IDS, type Hyp, type Interp, type Obs, type Profile, type Session } from './types'
+import { ENTITY_IDS, HYP_IDS, type EntityId, type Hyp, type Interp, type Obs, type Profile, type Session } from './types'
 
 /**
  * Observation → interpretation. Pure and deterministic.
@@ -12,6 +12,15 @@ import { ENTITY_IDS, HYP_IDS, type Hyp, type Interp, type Obs, type Profile, typ
 
 const clamp = (v: number, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v))
 const MAX_MARKS = 160
+
+/**
+ * Marks and misreads are referred to long after they are made — "renew this
+ * one", "correct that one" — but the lists they live in are trimmed and capped,
+ * so a position is not a durable way to name one. Each gets an id instead.
+ * It only has to be unique within a profile, so a counter plus the clock will do.
+ */
+let idSeq = 0
+const nextId = () => `${Date.now().toString(36)}${(idSeq++).toString(36)}`
 
 export const statusOf = (h: Hyp): Hyp['status'] => {
   const n = evidenceCount(h)
@@ -29,6 +38,11 @@ export interface StepResult {
   session: Session
   events: Interp[]
 }
+
+/** Observations that are about one entity's relationship, and so carry an entity id. */
+type EntityObs = Extract<Obs, { id: EntityId }>
+const ENTITY_OBS = new Set<Obs['t']>(['dwell', 'touch', 'chase', 'slip', 'complete', 'hold', 'leave', 'gift'])
+const isEntityObs = (o: Obs): o is EntityObs => ENTITY_OBS.has(o.t)
 
 export function step(prev: Profile, sess: Session, o: Obs, now = Date.now()): StepResult {
   const p: Profile = {
@@ -49,7 +63,7 @@ export function step(prev: Profile, sess: Session, o: Obs, now = Date.now()): St
   let goneNow = false
 
   // ── 1. The relationship ──────────────────────────────────────────────
-  if ('id' in o) {
+  if (isEntityObs(o)) {
     const m = { ...p.entities[o.id] }
     switch (o.t) {
       case 'dwell':
@@ -92,7 +106,7 @@ export function step(prev: Profile, sess: Session, o: Obs, now = Date.now()): St
 
   switch (o.t) {
     case 'mark': {
-      const marks = [...p.marks, { ...o.mark, visit: p.visits, life: 1 }]
+      const marks = [...p.marks, { ...o.mark, id: nextId(), visit: p.visits, life: 1 }]
       if (marks.length > MAX_MARKS) {
         // forget the faintest of the old ones first
         let drop = 0
@@ -109,13 +123,15 @@ export function step(prev: Profile, sess: Session, o: Obs, now = Date.now()): St
       p.marks = marks
       break
     }
-    case 'renew':
-      if (p.marks[o.index]) {
+    case 'renew': {
+      const at = p.marks.findIndex((m) => m.id === o.id)
+      if (at >= 0) {
         const marks = [...p.marks]
-        marks[o.index] = { ...marks[o.index], life: Math.min(1, (marks[o.index].life ?? 1) + 0.5), dead: false, visit: p.visits }
+        marks[at] = { ...marks[at], life: Math.min(1, (marks[at].life ?? 1) + 0.5), dead: false, visit: p.visits }
         p.marks = marks
       }
       break
+    }
     case 'gift':
       p.gifts = [...p.gifts, { from: o.from, visit: p.visits }]
       break
@@ -138,15 +154,17 @@ export function step(prev: Profile, sess: Session, o: Obs, now = Date.now()): St
       p.marks = p.marks.filter((m) => !m.dead)
       break
     case 'misread':
-      p.misreads = [...p.misreads.slice(-11), { ...o.misread, visit: p.visits, corrected: false }]
+      p.misreads = [...p.misreads.slice(-11), { ...o.misread, id: nextId(), visit: p.visits, corrected: false }]
       break
-    case 'correct':
-      if (p.misreads[o.index]) {
+    case 'correct': {
+      const at = p.misreads.findIndex((m) => m.id === o.id)
+      if (at >= 0) {
         const list = [...p.misreads]
-        list[o.index] = { ...list[o.index], corrected: true }
+        list[at] = { ...list[at], corrected: true }
         p.misreads = list
       }
       break
+    }
     case 'input':
       p.inputs[o.kind]++
       break

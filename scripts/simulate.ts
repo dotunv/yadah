@@ -93,7 +93,11 @@ console.log(' stillness after being tested:', p.hyps.stillness.status, 'revision
   let s = createSession(0)
   ;({ profile: p, session: s } = step(p, s, { t: 'misread', misread: { kind: 'looking', entity: 'witness', text: 'you were looking for something.', claim: 'You were looking for something.', at: 0 } }, 0))
   ;({ profile: p, session: s } = step(p, s, { t: 'misread', misread: { kind: 'afraid', entity: 'stranger', text: 'you were afraid of it.', claim: 'You were afraid of the stranger.', at: 1 } }, 0))
-  ;({ profile: p, session: s } = step(p, s, { t: 'correct', index: 1, hyp: 'return' }, 0))
+  // correct it by id: two more misreads push the list past its cap and shift it
+  const afraid = p.misreads.find((m) => m.kind === 'afraid')!.id
+  ;({ profile: p, session: s } = step(p, s, { t: 'misread', misread: { kind: 'tired', entity: 'listener', text: 'you were tired.', claim: 'You were tired.', at: 2 } }, 0))
+  ;({ profile: p, session: s } = step(p, s, { t: 'misread', misread: { kind: 'light', entity: null, text: 'the light.', claim: 'The light.', at: 3 } }, 0))
+  ;({ profile: p, session: s } = step(p, s, { t: 'correct', id: afraid, hyp: 'return' }, 0))
   console.log('\n== misreading\n corrected:', p.misreads.map((m) => `${m.kind}:${m.corrected}`).join(' '), ' return support:', p.hyps.return.support)
   console.log(' reveal says:', revealLines({ ...p, hyps: { ...p.hyps, stillness: { ...p.hyps.stillness, support: 9, contra: 0 }, patience: { ...p.hyps.patience, support: 9, contra: 0 } } }).join(' / '))
 }
@@ -127,4 +131,44 @@ console.log(' stillness after being tested:', p.hyps.stillness.status, 'revision
   p = beginVisit(p, 4)
   console.log(' ending ready (visit', p.visits + ', 5 close):', endingReady(p, s))
   console.log(' ending says:', endingLines(p).join(' / '))
+}
+
+// Marks and misreads are named by id, not position: both lists get trimmed and
+// reordered while the world still holds references into them.
+{
+  let p = beginVisit(createProfile(0), 0)
+  let s = createSession(0)
+  for (let i = 0; i < 3; i++) ({ profile: p, session: s } = step(p, s, { t: 'mark', mark: { x: 0.2 + i * 0.01, y: 0.3, w: 0.5, e: null } }, 0))
+  const target = p.marks[1]
+  // age one mark to death and let prune() drop it, shifting every later index
+  p.marks = p.marks.map((m, i) => (i === 0 ? { ...m, life: 0, dead: true } : m))
+  ;({ profile: p, session: s } = step(p, s, { t: 'prune' }, 0))
+  const still = p.marks.find((m) => m.id === target.id)
+  const at0 = p.marks[0] === target
+  ;({ profile: p, session: s } = step(p, s, { t: 'renew', id: target.id }, 0))
+  const renewed = p.marks.find((m) => m.id === target.id)!
+  console.log('\n== marks keep their identity\n the mark targeted before prune:', at0 ? 'was index 0 (a different mark)' : 'kept its position')
+  console.log(' still findable by id:', !!still, '· life after renew:', renewed.life.toFixed(2), '(renewed, not the one at index 0)')
+}
+
+// A misreading you contradict is the one you actually contradicted, even if more
+// were said afterwards and the list has shifted under it.
+{
+  let p = beginVisit(createProfile(0), 0)
+  let s = createSession(0)
+  for (let i = 0; i < 12; i++) ({ profile: p, session: s } = step(p, s, { t: 'misread', misread: { kind: 'afraid', entity: 'stranger', text: `old${i}`, claim: `old${i}`, at: i } }, 0))
+  const target = p.misreads[11]
+  for (let i = 0; i < 3; i++) ({ profile: p, session: s } = step(p, s, { t: 'misread', misread: { kind: 'tired', entity: 'listener', text: `new${i}`, claim: `new${i}`, at: 100 + i } }, 0))
+  const stillThere = p.misreads.some((m) => m.id === target.id)
+  ;({ profile: p, session: s } = step(p, s, { t: 'correct', id: target.id, hyp: 'return' }, 0))
+  const correctedRight = p.misreads.find((m) => m.id === target.id)?.corrected === true
+  const wrongOnes = p.misreads.filter((m) => m.text.startsWith('new') && m.corrected).length
+  console.log('\n== a correction lands on the right line\n targeted:', target.text, '· survived the shift:', stillThere)
+  console.log(' corrected the right one:', correctedRight, '· wrongly corrected:', wrongOnes)
+}
+
+// A mark's weight is how long the lamp stayed, so it has to vary.
+{
+  const weight = (dwell: number) => Math.min(1, Math.max(0.2, dwell / 8))
+  console.log('\n== mark weight tracks dwell\n 2s ->', weight(2).toFixed(2), '· 5s ->', weight(5).toFixed(2), '· 20s ->', weight(20).toFixed(2))
 }

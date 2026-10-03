@@ -59,14 +59,25 @@ function lsGet(): Profile | undefined {
   }
 }
 
-const valid = (p: unknown): p is Profile =>
-  !!p && typeof p === 'object' && (p as Profile).version === 2 && typeof (p as Profile).entities === 'object'
+/**
+ * Anything with the shape of a profile is worth loading, whatever version it
+ * was saved as — `migrate()` is what brings an older one up to date. Rejecting
+ * on `version` instead would mean that the day the format changes, everyone
+ * silently starts from an empty room.
+ */
+const valid = (p: unknown): p is Profile => {
+  if (!p || typeof p !== 'object') return false
+  const o = p as Partial<Profile>
+  return !!o.entities && typeof o.entities === 'object'
+}
+
+const stampOf = (p: Profile) => (typeof p.updatedAt === 'number' ? p.updatedAt : 0)
 
 export async function loadProfile(): Promise<Profile | undefined> {
   const [a, b] = await Promise.all([idbGet().catch(() => undefined), Promise.resolve(lsGet())])
   const found = [a, b].filter(valid)
   if (!found.length) return undefined
-  return found.sort((x, y) => y.updatedAt - x.updatedAt)[0]
+  return found.sort((x, y) => stampOf(y) - stampOf(x))[0]
 }
 
 /** Synchronous mirror — safe to call from pagehide. */

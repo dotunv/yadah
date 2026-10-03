@@ -103,6 +103,7 @@ export function seedProfile(persona: Persona, now = Date.now()): Profile {
     for (let i = 0; i < n; i++) {
       const visit = 1 + Math.floor(r() * 2)
       p.marks.push({
+        id: `${persona.id}-${def.id}-${i}`,
         x: Math.min(0.96, Math.max(0.04, def.base[0] + (r() - 0.5) * 0.18)),
         y: Math.min(0.94, Math.max(0.06, def.base[1] + (r() - 0.5) * 0.2)),
         visit,

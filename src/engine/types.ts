@@ -36,6 +36,8 @@ export interface Memory {
 
 /** A place where the lamp lingered. Memory made physical. */
 export interface Mark {
+  /** Stable for the life of the mark, so it survives pruning and reordering. */
+  id: string
   x: number
   y: number
   visit: number
@@ -54,6 +56,8 @@ export type MisreadKind = 'afraid' | 'tired' | 'vanity' | 'looking' | 'light' | 
 
 /** Something Yadah said about *why* you did something. Confident, fluent, possibly wrong. */
 export interface Misread {
+  /** Stable for the life of the misread, so a correction finds the right one. */
+  id: string
   kind: MisreadKind
   entity: EntityId | null
   /** Said at the time, about "it". */
@@ -133,8 +137,8 @@ export type Obs =
   /** How long both hands were held, and whether it was held to the end. */
   | { t: 'hold'; id: EntityId; ms: number; done: boolean }
   | { t: 'leave'; id: EntityId; ms: number }
-  | { t: 'mark'; mark: Omit<Mark, 'visit' | 'life' | 'dead'> }
-  | { t: 'renew'; index: number }
+  | { t: 'mark'; mark: Omit<Mark, 'id' | 'visit' | 'life' | 'dead'> }
+  | { t: 'renew'; id: string }
   | { t: 'prune' }
   | { t: 'travel'; to: string; first: boolean }
   | { t: 'stay'; ms: number }
@@ -144,8 +148,8 @@ export type Obs =
   | { t: 'path'; pts: number[] }
   | { t: 'chapter'; chapter: string }
   | { t: 'end' }
-  | { t: 'misread'; misread: Omit<Misread, 'visit' | 'corrected'> }
-  | { t: 'correct'; index: number; hyp: HypId }
+  | { t: 'misread'; misread: Omit<Misread, 'id' | 'visit' | 'corrected'> }
+  | { t: 'correct'; id: string; hyp: HypId }
   | { t: 'input'; kind: 'key' | 'click' | 'move' }
   | { t: 'pace'; speed: number }
   | { t: 'active'; ms: number }
