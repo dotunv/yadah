@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Brain } from './brain'
+import { MAX_LEN, board } from './board'
+import type { Site } from './engine/sites'
 import { Debug } from './Debug'
 import { ENTITIES } from './engine/entities'
 import { PLACES, unlocked, type Dir, type PlaceId } from './engine/places'
@@ -18,6 +20,10 @@ export default function App() {
   const [beacon, setBeacon] = useState(false)
   const [live, setLive] = useState('')
   const [debug, setDebug] = useState(false)
+  const [site, setSite] = useState<Site | null>(null)
+  const [desk, setDesk] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [pinned, setPinned] = useState(false)
   const [place, setPlace] = useState<PlaceId>('hall')
   const [corner, setCorner] = useState(false)
   const [confirm, setConfirm] = useState(false)
@@ -39,7 +45,7 @@ export default function App() {
         document.fonts.load('800 100px "Bricolage Grotesque Variable"'),
       ]).catch(() => undefined)
       if (dead || !canvas.current) return
-      w = new World(canvas.current, brain, { whisper: setLive, phase: setPhase, awaiting: setAwaiting, beacon: setBeacon, place: setPlace })
+      w = new World(canvas.current, brain, { whisper: setLive, phase: setPhase, awaiting: setAwaiting, beacon: setBeacon, place: setPlace, portal: setSite, desk: setDesk })
       setWorld(w)
       ;(window as unknown as { yadah: unknown }).yadah = { world: w, brain }
     })()
@@ -67,6 +73,24 @@ export default function App() {
     addEventListener('pointermove', on, { passive: true })
     return () => removeEventListener('pointermove', on)
   }, [])
+
+  // the board only joins the others while the desk is open
+  useEffect(() => {
+    if (desk) board.join()
+    else board.leave()
+  }, [desk])
+  useSyncExternalStore(board.subscribe, board.snapshot)
+
+  useEffect(() => {
+    if (!site && !desk) return
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (site) world?.closePortal()
+      if (desk) world?.closeDesk()
+    }
+    addEventListener('keydown', k)
+    return () => removeEventListener('keydown', k)
+  }, [site, desk, world])
 
   useSyncExternalStore(
     (cb) => brain.subscribe(cb),
@@ -138,6 +162,74 @@ export default function App() {
           </>
         )}
       </div>
+
+      {site && (
+        <div className="portal" role="dialog" aria-label={`A window onto ${site.name}`}>
+          <p className="portal-kicker">the water shows you</p>
+          <h2>{site.name}</h2>
+          <p className="portal-line">{site.line}</p>
+          <p className="portal-host">{new URL(site.url).host}</p>
+          <div className="portal-acts">
+            <a
+              className="begin"
+              href={site.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              autoFocus
+              onClick={() => {
+                brain.observe({ t: 'chapter', chapter: `site:${site.id}` })
+                brain.observe({ t: 'diary', text: `you went through the pond, to ${site.name}.` })
+              }}
+            >
+              step through ↗
+            </a>
+            <button className="notyet" onClick={() => world?.closePortal()}>
+              stay here
+            </button>
+          </div>
+        </div>
+      )}
+
+      {desk && (
+        <div className="desk" role="dialog" aria-label="The board on the desk">
+          <header>
+            <h2>the desk</h2>
+            <p>
+              {board.peers > 0 ? `${board.peers} ${board.peers === 1 ? 'other is' : 'others are'} here with you.` : 'no one else is here right now.'} what is pinned passes hand to
+              hand between whoever visits. there is no server, so it lives in the people who have seen it.
+            </p>
+          </header>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (board.pin(draft)) {
+                setDraft('')
+                setPinned(true)
+                setTimeout(() => setPinned(false), 1800)
+              }
+            }}
+          >
+            <input value={draft} onChange={(e) => setDraft(e.target.value.slice(0, MAX_LEN))} placeholder="leave a line for whoever comes next" maxLength={MAX_LEN} aria-label="A note to pin" />
+            <button type="submit" disabled={!draft.trim()}>
+              {pinned ? 'pinned' : 'pin it'}
+            </button>
+          </form>
+          <ul className="slips">
+            {board.visible().map((n) => (
+              <li key={n.id} data-hand={n.hand}>
+                <span>{n.text}</span>
+                <button onClick={() => board.hide(n.id)} aria-label="Hide this note for me" title="hide for me">
+                  ×
+                </button>
+              </li>
+            ))}
+            {!board.visible().length && <li className="empty">nothing pinned yet. be the first.</li>}
+          </ul>
+          <button className="notyet leave" onClick={() => world?.closeDesk()}>
+            step away
+          </button>
+        </div>
+      )}
 
       {debug && <Debug brain={brain} world={world} />}
     </div>

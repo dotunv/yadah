@@ -49,3 +49,27 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .debug .ev { padding: 2px 0; border-bottom: 1px solid oklch(1 0 0 / 0.06); } .debug .evt { color: oklch(0.78 0.13 40); }
 
 @media (prefers-reduced-motion: reduce) { .choose { animation: none; } }
+
+/* a real window, and the desk */
+.portal, .desk { position: absolute; z-index: 20; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; padding: 2rem 2rem 1.6rem; border-radius: 18px; background: oklch(0.2 0.03 230 / 0.94); backdrop-filter: blur(14px); color: oklch(0.96 0.02 220); box-shadow: 0 20px 80px oklch(0 0 0 / 0.5); animation: rise .9s ease both; }
+@keyframes rise { from { opacity: 0; transform: translate(-50%, -46%); } }
+.portal-kicker { font-family: var(--grotesk, inherit); font-size: .75rem; letter-spacing: .3em; text-transform: uppercase; opacity: .7; margin: 0 0 .6rem; }
+.portal h2, .desk h2 { margin: 0 0 .5rem; font-family: "Bricolage Grotesque Variable", sans-serif; font-weight: 700; font-size: clamp(1.8rem, 5vw, 2.6rem); line-height: 1.05; }
+.portal-line { font-style: italic; font-size: 1.35rem; margin: .2rem 0 .8rem; }
+.portal-host { font-size: .85rem; opacity: .6; margin: 0 0 1.4rem; }
+.portal-acts { display: flex; gap: 1.2rem; align-items: baseline; flex-wrap: wrap; }
+.portal a.begin { text-decoration: none; display: inline-block; }
+.desk header p { font-style: italic; opacity: .8; margin: 0 0 1rem; line-height: 1.4; }
+.desk form { display: flex; gap: .6rem; margin-bottom: 1rem; }
+.desk input { flex: 1; min-width: 0; font: inherit; font-size: 1.1rem; padding: .6rem .8rem; border-radius: 10px; border: 1px solid oklch(1 0 0 / .25); background: oklch(0 0 0 / .25); color: inherit; }
+.desk input:focus { outline: 2px solid oklch(0.85 0.12 85); }
+.desk form button { font: inherit; padding: .5rem 1rem; border-radius: 10px; border: 0; background: oklch(0.85 0.12 85); color: oklch(0.2 0.03 60); cursor: pointer; }
+.desk form button:disabled { opacity: .4; cursor: default; }
+.slips { list-style: none; margin: 0 0 1rem; padding: 0; display: grid; gap: .55rem; max-height: 42vh; overflow: auto; }
+.slips li { display: flex; gap: .6rem; justify-content: space-between; align-items: flex-start; padding: .55rem .8rem; border-radius: 6px; background: oklch(0.93 0.05 calc(60 + var(--h, 0))); color: oklch(0.25 0.03 60); font-size: 1.05rem; line-height: 1.3; word-break: break-word; }
+.slips li[data-hand="0"] { --h: 0; } .slips li[data-hand="1"] { --h: 25; } .slips li[data-hand="2"] { --h: 60; } .slips li[data-hand="3"] { --h: 100; } .slips li[data-hand="4"] { --h: 150; } .slips li[data-hand="5"] { --h: 190; }
+.slips li[data-hand="6"] { --h: 230; } .slips li[data-hand="7"] { --h: 270; } .slips li[data-hand="8"] { --h: 300; } .slips li[data-hand="9"] { --h: 330; } .slips li[data-hand="10"] { --h: 345; } .slips li[data-hand="11"] { --h: 120; }
+.slips li button { opacity: .35; font-size: 1.1rem; line-height: 1; padding: 0 .2rem; color: inherit; cursor: pointer; }
+.slips li:hover button, .slips li button:focus-visible { opacity: .9; }
+.slips li.empty { background: transparent; color: inherit; opacity: .6; font-style: italic; }
+.desk .leave { margin: 0; }

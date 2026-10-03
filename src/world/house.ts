@@ -1,7 +1,9 @@
 import { DEF } from '../engine/entities'
-import { FAR, FAR_IDS, type FarId } from '../engine/knowledge'
+import { FAR, type FarId } from '../engine/knowledge'
 import { OPPOSITE, PLACES, isFar, unlocked, type Dir, type PlaceId } from '../engine/places'
+import { SITES } from '../engine/sites'
 import { pondOf } from './far'
+import { deskOf } from './desk'
 import { stageOf } from '../engine/places'
 import type { EntityId } from '../engine/types'
 import { clamp, ease, lerp, type Ent } from './scene'
@@ -59,7 +61,7 @@ export const insideDoor = (w: World, dir: Dir): [number, number] => {
 
 /** Walk (or cross the dark) to the next place. */
 export function travel(w: World, dir: Dir) {
-  if (w.transition || w.phase !== 'world' || w.asleep) return
+  if (w.transition || w.portal || w.deskOpen || w.phase !== 'world' || w.asleep) return
   const to = PLACES[w.place].doors[dir]
   if (!to || !unlocked(w.brain.profile).includes(to)) return
   if (w.enc && !w.ride) w.enc.leaving = true
@@ -80,15 +82,20 @@ export function inPond(w: World, x: number, y: number) {
 
 /** Into the water, and out somewhere else: any of the seven far places, favouring ones you have not seen. */
 export function dive(w: World, to?: FarId) {
-  if (w.transition || w.phase !== 'world' || w.asleep || w.enc) return
-  let pick = to
-  if (!pick) {
-    const seen = (id: string) => w.brain.profile.chapters.includes(`place:${id}`)
-    const pool = FAR_IDS.filter((p) => p !== w.lastFar).flatMap((p) => (seen(p) ? [p] : [p, p, p]))
-    pick = pool[Math.floor(w.rand() * pool.length)]
+  if (w.transition || w.phase !== 'world' || w.asleep || w.enc || w.portal) return
+  if (!to) {
+    // the pond opens onto a real website, favouring ones you have not been to
+    const seen = (id: string) => w.brain.profile.chapters.includes(`site:${id}`)
+    const pool = SITES.filter((s) => s.id !== w.lastSite).flatMap((s) => (seen(s.id) ? [s] : [s, s, s]))
+    const site = pool[Math.floor(w.rand() * pool.length)]
+    w.lastSite = site.id
+    w.portal = { site, t: 0, told: false }
+    w.sound.whoosh()
+    w.sound.pluck('listener', 3, 0.06)
+    return
   }
-  w.lastFar = pick
-  w.transition = { t: 0, to: pick, dir: 'up', swapped: false, via: 'pond' }
+  w.lastFar = to
+  w.transition = { t: 0, to, dir: 'up', swapped: false, via: 'pond' }
   w.sound.whoosh()
   w.sound.pluck('listener', 3, 0.06)
 }
@@ -143,10 +150,30 @@ export function updateHouse(w: World, dt: number) {
       swap(w, tr.to, tr.dir)
     }
     if (tr.t >= 1.5) w.transition = null
+  } else if (w.portal) {
+    // the water rises over the room and stays while the window is open
+    w.portal.t += dt
+    w.curtainWater = true
+    w.curtain = lerp(w.curtain, 0.88, 1 - Math.exp(-dt * 3.2))
+    if (w.portal.t > 0.9 && !w.portal.told) {
+      w.portal.told = true
+      w.openPortal(w.portal.site)
+    }
   } else w.curtain = lerp(w.curtain, 0, 1 - Math.exp(-dt * 4))
 
+  // ── the desk ──────────────────────────────────────────────────────
+  if (w.place === 'hall' && w.phase === 'world' && !w.transition && !w.portal && !w.asleep && L.moved && !w.enc && !w.tug && !w.ride && !w.deskOpen) {
+    const d = deskOf(w)
+    const on = Math.abs(L.x - d.x) < d.rx && Math.abs(L.y - d.y) < d.ry && L.speed < 150
+    w.deskDwell = on ? w.deskDwell + dt : Math.max(0, w.deskDwell - dt * 1.5)
+    if (w.deskDwell > 1.2) {
+      w.deskDwell = 0
+      w.openDesk()
+    }
+  } else if (!w.deskOpen) w.deskDwell = Math.max(0, w.deskDwell - dt)
+
   // ── the pond ──────────────────────────────────────────────────────
-  if (w.place === 'garden' && w.phase === 'world' && !w.transition && !w.asleep && L.moved && !w.enc && !w.tug && !w.ride) {
+  if (w.place === 'garden' && w.phase === 'world' && !w.transition && !w.portal && !w.asleep && L.moved && !w.enc && !w.tug && !w.ride) {
     const p = pondOf(w)
     const d = Math.hypot((L.x - p.x) / p.rx, (L.y - p.y) / p.ry)
     if (d < 2 && !w.hinted.has('pond')) {

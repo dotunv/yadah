@@ -14,6 +14,7 @@ import { controlLamp, fire, updateEvents, type Ghost } from './events'
 import { factsOf, type FarId } from '../engine/knowledge'
 import { isFar } from '../engine/places'
 import { factPos } from './far'
+import type { Site } from '../engine/sites'
 import { dirToward, dive, doorPoint, doorsOf, inPond, presentOf, relocate, travel, updateHouse } from './house'
 import { Sound } from './sound'
 import { clamp, ease, lerp, rngOf, type Ent, type Enc, type Lamp, type Mote, type Speck, type Title, type Whisper } from './scene'
@@ -28,6 +29,10 @@ export interface WorldHooks {
   beacon?: (v: boolean) => void
   /** Which place you are in now. */
   place?: (p: PlaceId) => void
+  /** The pond has opened onto a real website (or closed again). */
+  portal?: (s: Site | null) => void
+  /** The lamp has rested on the desk: the board is open (or closed). */
+  desk?: (open: boolean) => void
 }
 
 const ENC_LEN: Record<EntityId, number> = { listener: 6, wanderer: 8, mirror: 3500, archivist: 3, stranger: 7, witness: 12, seed: 4, vigil: 20 }
@@ -95,6 +100,10 @@ export class World {
   factCool: Record<string, number> = {}
   souvenirTold: Record<string, number> = {}
   pondDwell = 0
+  portal: { site: Site; t: number; told: boolean } | null = null
+  lastSite: string | null = null
+  deskDwell = 0
+  deskOpen = false
   lastQuiz = -99
   lastFar: string | null = null
   /** A brief swell on everything, when something is learned. */
@@ -208,7 +217,31 @@ export class World {
     return isFar(this.place) ? factsOf(this.place).map((f) => { const [x, y] = factPos(this, f); return { id: f.id, x, y } }) : []
   }
 
-  /** Go through the pond, to one far place (or a random one). */
+  /** Step back from a website the pond opened. */
+  closePortal() {
+    this.portal = null
+    this.hooks.portal?.(null)
+  }
+
+  /** Step away from the desk. */
+  closeDesk() {
+    this.deskOpen = false
+    this.deskDwell = 0
+    this.hooks.desk?.(false)
+  }
+
+  /** @internal called by the house sim */
+  openPortal(s: Site) {
+    this.hooks.portal?.(s)
+  }
+
+  /** @internal called by the house sim */
+  openDesk() {
+    this.deskOpen = true
+    this.hooks.desk?.(true)
+  }
+
+  /** Go through the pond: to a real website, or (with an id) to one far place. */
   dive(to?: FarId) {
     dive(this, to)
   }

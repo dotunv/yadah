@@ -1,3 +1,4 @@
+import { drawDesk, drawDeskLife } from './desk'
 import { PLACES, isFar } from '../engine/places'
 import { FAR_GROUND, drawFarLife, drawFarProps, drawLearnedShelf, pondOf } from './far'
 import { doorsOf } from './house'
@@ -34,7 +35,8 @@ export function drawProps(w: World, ctx: CanvasRenderingContext2D) {
   if (isFar(w.place)) return drawFarProps(w, ctx, w.place)
   switch (w.place) {
     case 'hall':
-      return hearth(w, ctx)
+      hearth(w, ctx)
+      return drawDesk(w, ctx)
     case 'archive':
       return archive(w, ctx, g.hue)
     case 'garden':
@@ -273,6 +275,7 @@ export function drawLife(w: World, ctx: CanvasRenderingContext2D) {
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   if (w.place === 'hall') {
+    drawDeskLife(w, ctx)
     // the hearth keeps a little of what it has been given
     const x = W * 0.5
     const y = H * 0.64
