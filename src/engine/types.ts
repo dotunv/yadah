@@ -9,7 +9,7 @@
 export const ENTITY_IDS = ['listener', 'wanderer', 'mirror', 'archivist', 'stranger', 'witness', 'seed', 'vigil'] as const
 export type EntityId = (typeof ENTITY_IDS)[number]
 
-export const HYP_IDS = ['stillness', 'pursuit', 'return', 'offpath', 'patience', 'hands', 'endure', 'roam'] as const
+export const HYP_IDS = ['stillness', 'pursuit', 'return', 'offpath', 'patience', 'hands', 'endure', 'roam', 'curious'] as const
 export type HypId = (typeof HYP_IDS)[number]
 
 /** What the world remembers about one entity's relationship with this person. */
@@ -97,6 +97,10 @@ export interface Profile {
   chapters: string[]
   /** The story reached its end. */
   ended: boolean
+  /** Things you have been told, by id, oldest first. */
+  learned: string[]
+  /** Things you were able to give back when asked. Learned, and now known. */
+  recalled: string[]
   /** Places whose doors have already appeared. */
   discovered: string[]
   /** Things you were given, and by whom. They stay in the hall. */
@@ -136,6 +140,8 @@ export type Obs =
   | { t: 'mark'; mark: Omit<Mark, 'visit' | 'life' | 'dead'> }
   | { t: 'renew'; index: number }
   | { t: 'prune' }
+  | { t: 'learn'; fact: string }
+  | { t: 'recall'; fact: string; ok: boolean }
   | { t: 'travel'; to: string; first: boolean }
   | { t: 'stay'; ms: number }
   | { t: 'gift'; from: EntityId }

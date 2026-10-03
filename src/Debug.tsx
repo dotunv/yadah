@@ -3,7 +3,9 @@ import { HYPS, confidence } from './engine/hypotheses'
 import { PERSONAS } from './engine/personas'
 import { relate } from './engine/relationship'
 import type { Brain } from './brain'
+import { FAR_IDS } from './engine/knowledge'
 import { EVENT_IDS } from './world/events'
+import { KNOWLEDGE_TOTAL } from './world/know'
 import type { World } from './world/World'
 
 /** Yadah's mind, in the open. Toggle with the backtick key. */
@@ -73,6 +75,13 @@ export function Debug({ brain, world }: { brain: Brain; world: World | null }) {
       <div className="pbtns" style={{ marginTop: 6 }}>
         <button onClick={() => void brain.timeTravel(2)}>come back in 2 days</button>
         <button onClick={() => void brain.timeTravel(9)}>come back in 9 days</button>
+      </div>
+      <h4>knowledge</h4>
+      <div>learned {p.learned.length} of {KNOWLEDGE_TOTAL} · given back {p.recalled.length}</div>
+      <div className="pbtns" style={{ marginTop: 6 }}>
+        {FAR_IDS.map((id) => (
+          <button key={id} onClick={() => world?.dive(id)}>{id}</button>
+        ))}
       </div>
       <h4>make something happen</h4>
       <div className="pbtns">

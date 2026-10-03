@@ -1,3 +1,4 @@
+import { FAR, FAR_IDS, type FarId } from './knowledge'
 import { ENTITY_IDS, type EntityId, type Profile } from './types'
 
 /**
@@ -7,7 +8,8 @@ import { ENTITY_IDS, type EntityId, type Profile } from './types'
  * you have earned them, not before.
  */
 
-export const PLACE_IDS = ['hall', 'archive', 'garden', 'shore'] as const
+export const NEAR_IDS = ['hall', 'archive', 'garden', 'shore'] as const
+export const PLACE_IDS = [...NEAR_IDS, ...FAR_IDS] as const
 export type PlaceId = (typeof PLACE_IDS)[number]
 export type Dir = 'left' | 'right' | 'up' | 'down'
 
@@ -26,7 +28,7 @@ export interface PlaceDef {
   homes: Partial<Record<EntityId, [number, number]>>
 }
 
-export const PLACES: Record<PlaceId, PlaceDef> = {
+const NEAR: Record<(typeof NEAR_IDS)[number], PlaceDef> = {
   hall: {
     id: 'hall',
     name: 'the hall',
@@ -60,6 +62,15 @@ export const PLACES: Record<PlaceId, PlaceDef> = {
     homes: { vigil: [0.5, 0.64] },
   },
 }
+
+/** The far places: reached only through the pond, and left by the door at the bottom. */
+const FARS = Object.fromEntries(
+  FAR_IDS.map((id) => [id, { id, name: FAR[id].name.toLowerCase(), hue: FAR[id].hue, doors: { down: 'garden' }, epigraph: FAR[id].epigraph, homes: {} } as PlaceDef]),
+) as Record<FarId, PlaceDef>
+
+export const PLACES: Record<PlaceId, PlaceDef> = { ...NEAR, ...FARS }
+
+export const isFar = (p: PlaceId): p is FarId => (FAR_IDS as readonly string[]).includes(p)
 
 /** Where each presence lives until it comes to know you. */
 export const NATIVE = Object.fromEntries(

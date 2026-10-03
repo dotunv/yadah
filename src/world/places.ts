@@ -1,4 +1,5 @@
-import { PLACES } from '../engine/places'
+import { PLACES, isFar } from '../engine/places'
+import { FAR_GROUND, drawFarLife, drawFarProps, drawLearnedShelf, pondOf } from './far'
 import { doorsOf } from './house'
 import { clamp, ease, rngOf } from './scene'
 import type { World } from './World'
@@ -13,11 +14,16 @@ const angleLerp = (a: number, b: number, t: number) => (a + ((((b - a) % 360) + 
 
 /** The colour of the floor here: the air you have made, tinted by the place. */
 export function ground(w: World) {
+  if (isFar(w.place)) {
+    const g = FAR_GROUND[w.place]
+    return { hue: g.h, chroma: g.c + w.atm.chroma * 0.15, l: g.l }
+  }
   const hall = w.place === 'hall'
+  const near = w.place as 'hall' | 'archive' | 'garden' | 'shore'
   return {
-    hue: hall ? w.atm.hue : w.place === 'archive' ? angleLerp(w.atm.hue, 52, 0.8) : angleLerp(w.atm.hue, PLACES[w.place].hue, 0.62),
-    chroma: { hall: 0.04, archive: 0.05, garden: 0.1, shore: 0.08 }[w.place] + w.atm.chroma * 0.6,
-    l: { hall: 0.58, archive: 0.5, garden: 0.46, shore: 0.5 }[w.place],
+    hue: hall ? w.atm.hue : near === 'archive' ? angleLerp(w.atm.hue, 52, 0.8) : angleLerp(w.atm.hue, PLACES[near].hue, 0.62),
+    chroma: { hall: 0.04, archive: 0.05, garden: 0.1, shore: 0.08 }[near] + w.atm.chroma * 0.6,
+    l: { hall: 0.58, archive: 0.5, garden: 0.46, shore: 0.5 }[near],
   }
 }
 
@@ -25,6 +31,7 @@ export function ground(w: World) {
 
 export function drawProps(w: World, ctx: CanvasRenderingContext2D) {
   const g = ground(w)
+  if (isFar(w.place)) return drawFarProps(w, ctx, w.place)
   switch (w.place) {
     case 'hall':
       return hearth(w, ctx)
@@ -81,7 +88,7 @@ function archive(w: World, ctx: CanvasRenderingContext2D, hue: number) {
   ctx.restore()
   // the shelves along the back wall
   ctx.fillStyle = col(0.26, 0.06, hue)
-  ctx.fillRect(0, 0, W, H * 0.2)
+  ctx.fillRect(0, 0, W, H * 0.31)
   for (let row = 0; row < 2; row++) {
     const y = row * H * 0.1 + H * 0.012
     ctx.fillStyle = col(0.11, 0.01, hue)
@@ -95,6 +102,10 @@ function archive(w: World, ctx: CanvasRenderingContext2D, hue: number) {
       x += bw + 1
     }
   }
+  // the third shelf is yours: a book for everything you have been told
+  ctx.fillStyle = col(0.11, 0.01, hue)
+  ctx.fillRect(0, H * 0.3, W, 4)
+  drawLearnedShelf(w, ctx)
   // a long table and what is left on it
   const tx = W * 0.5
   const ty = H * 0.62
@@ -151,6 +162,40 @@ function garden(w: World, ctx: CanvasRenderingContext2D) {
       ctx.fill()
     }
   }
+  // the pond, with a sky in it
+  const pd = pondOf(w)
+  ctx.fillStyle = col(0.3, 0.07, 150)
+  ctx.beginPath()
+  ctx.ellipse(pd.x, pd.y, pd.rx * 1.12, pd.ry * 1.18, 0, 0, 6.3)
+  ctx.fill()
+  const wg = ctx.createLinearGradient(0, pd.y - pd.ry, 0, pd.y + pd.ry)
+  wg.addColorStop(0, col(0.62, 0.12, 215))
+  wg.addColorStop(1, col(0.36, 0.1, 250))
+  ctx.fillStyle = wg
+  ctx.beginPath()
+  ctx.ellipse(pd.x, pd.y, pd.rx, pd.ry, 0, 0, 6.3)
+  ctx.fill()
+  ctx.strokeStyle = col(0.92, 0.04, 215, 0.4)
+  ctx.lineWidth = 1.4
+  for (let k = 0; k < 3; k++) {
+    const ph = (w.t * 0.25 * w.motion + k / 3) % 1
+    ctx.globalAlpha = 1 - ph
+    ctx.beginPath()
+    ctx.ellipse(pd.x + Math.sin(k * 2) * pd.rx * 0.3, pd.y + Math.cos(k * 3) * pd.ry * 0.2, pd.rx * 0.2 + ph * pd.rx * 0.5, pd.ry * 0.2 + ph * pd.ry * 0.5, 0, 0, 6.3)
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+  ctx.fillStyle = col(0.46, 0.14, 142)
+  for (let k = 0; k < 6; k++) {
+    const a = k * 2.1 + 0.6
+    ctx.beginPath()
+    ctx.ellipse(pd.x + Math.cos(a) * pd.rx * (0.3 + 0.35 * ((k * 7) % 3) / 3), pd.y + Math.sin(a) * pd.ry * 0.55, 15, 8, a, 0, 6.3)
+    ctx.fill()
+  }
+  ctx.fillStyle = col(0.9, 0.1, 350)
+  ctx.beginPath()
+  ctx.arc(pd.x - pd.rx * 0.35, pd.y + pd.ry * 0.12, 5, 0, 6.3)
+  ctx.fill()
   // a low fence along the far side
   ctx.strokeStyle = col(0.38, 0.07, 60, 0.95)
   ctx.lineWidth = 3
@@ -224,6 +269,7 @@ function shore(w: World, ctx: CanvasRenderingContext2D, hue: number) {
 
 export function drawLife(w: World, ctx: CanvasRenderingContext2D) {
   const { w: W, h: H } = w
+  if (isFar(w.place)) return drawFarLife(w, ctx, w.place)
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   if (w.place === 'hall') {
@@ -255,6 +301,21 @@ export function drawLife(w: World, ctx: CanvasRenderingContext2D) {
     ctx.fill()
   }
   if (w.place === 'garden') {
+    // the water answers the lamp: a slow spiral, brighter the nearer you stand
+    const pd = pondOf(w)
+    const near = clamp(1 - Math.hypot((w.lamp.x - pd.x) / pd.rx, (w.lamp.y - pd.y) / pd.ry) / 2.2)
+    const dw = clamp(w.pondDwell / 1.4)
+    ctx.strokeStyle = col(0.95, 0.12, 200, 0.12 + 0.6 * near + 0.3 * dw)
+    ctx.lineWidth = 1.6
+    ctx.beginPath()
+    for (let a = 0; a < 12.5; a += 0.2) {
+      const q = a / 12.5
+      const x = pd.x + Math.cos(a + w.t * 0.8 * w.motion) * pd.rx * 0.9 * q
+      const y = pd.y + Math.sin(a + w.t * 0.8 * w.motion) * pd.ry * 0.9 * q
+      if (a === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    ctx.stroke()
     // fireflies: slow, warm, and not interested in you
     const r = rngOf(7)
     for (let i = 0; i < 18; i++) {

@@ -2,6 +2,7 @@ import { DEF } from '../engine/entities'
 import { clamp, ease, lerp, rngOf, type Ent } from './scene'
 import type { World } from './World'
 import { drawDoors, drawLife, drawProps, ground } from './places'
+import { drawKnowledge, drawSouvenirs } from './far'
 
 /**
  * Everything is cut paper and ink in a dark room, lit by a lamp you carry.
@@ -125,14 +126,16 @@ export function render(w: World) {
   drawTug(w, ctx)
   drawGhost2(w, ctx)
   drawGifts(w, ctx)
+  if (w.place === 'hall') drawSouvenirs(w, ctx)
   drawDepth(w, ctx)
+  drawKnowledge(w, ctx)
   drawWhispers(w, ctx)
   drawTitles(w, ctx)
   drawReveal(w, ctx)
   drawShock(w, ctx)
   drawLamp(w, ctx)
   if (w.curtain > 0.01) {
-    ctx.fillStyle = `rgba(4,5,5,${w.curtain})`
+    ctx.fillStyle = w.curtainWater ? `rgba(214,240,250,${w.curtain})` : `rgba(4,5,5,${w.curtain})`
     ctx.fillRect(0, 0, W, H)
   }
 }
@@ -1040,7 +1043,9 @@ function drawWhispers(w: World, ctx: CanvasRenderingContext2D) {
   for (const s of w.whispers) {
     const inn = clamp((w.t - s.t0) / 0.9)
     const out = clamp((s.t0 + s.dur - w.t) / 1.6)
-    const a = Math.min(inn, out) * (1 - 0.6 * w.hush)
+    // a fact on the card is read alone: whispers step back while it is up
+    const cardUp = w.card && w.t < w.card.t0 + w.card.dur ? 0.12 : 1
+    const a = Math.min(inn, out) * (1 - 0.6 * w.hush) * cardUp
     if (a <= 0.01) continue
     ctx.save()
     ctx.globalAlpha = a

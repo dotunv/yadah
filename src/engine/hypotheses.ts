@@ -131,6 +131,17 @@ export const HYPS: HypDef[] = [
       return {}
     },
   },
+  {
+    id: 'curious',
+    claim: 'You like to know things.',
+    opposite: 'You would rather not know.',
+    doubt: 'I thought you wanted to know.',
+    weigh: (o) => {
+      if (o.t === 'learn') return { support: 0.7 }
+      if (o.t === 'recall') return o.ok ? { support: 0.5 } : { support: 0.15 }
+      return {}
+    },
+  },
 ]
 
 export const HYP = Object.fromEntries(HYPS.map((h) => [h.id, h])) as Record<HypId, HypDef>

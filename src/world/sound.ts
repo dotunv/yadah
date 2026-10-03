@@ -174,7 +174,7 @@ export class Sound {
   setPlace(id: string) {
     const ctx = this.ctx
     if (!ctx) return
-    const mult = { hall: 1, archive: 0.89, garden: 1.122, shore: 0.75 }[id] ?? 1
+    const mult = { hall: 1, archive: 0.89, garden: 1.122, shore: 0.75, japan: 1.19, ethiopia: 0.94, peru: 1.06, iceland: 0.84, india: 1.26, aotearoa: 1.12, morocco: 0.9 }[id] ?? 1
     this.padOsc.forEach((o, i) => o.frequency.setTargetAtTime([55, 82.4][i] * mult, ctx.currentTime, 1.2))
   }
 

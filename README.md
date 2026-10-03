@@ -92,6 +92,17 @@ Each presence has a second way of meeting you, offered only after you have finis
 - **Gifts** (a shell, a feather, a shard, a stone…) are given once, at the second completion, and stay on the
   hearth in the hall. They say what they are when you stop beside them.
 
+## The pond, and knowing
+
+*Yadah* means "to know", so the house keeps knowledge as a real thing, not decoration.
+
+- **The pond.** In the garden there is a pond. Rest the lamp on it and it takes you, with no say in where, to one of **seven far places**: Japan, Ethiopia, Peru, Iceland, India, Aotearoa New Zealand, Morocco. Each has its own landscape, weather, sound and five small lights.
+- **Learn.** Rest the lamp on a light and a true fact about that place's history, craft, custom or land appears on a card. Yadah learns it alongside you and says so. 35 facts in all.
+- **Know.** Learning is hearing it. Knowing is giving it back: later, in the archive, Yadah asks with three lights as answers. Get it right and the book on the archive's third shelf turns gold. Get it wrong and it tells you the answer and asks again another day.
+- **Keep.** Finish a place and a small souvenir appears on the hall ledge. Yadah notes your curiosity as a guess about you ("You like to know things."), and the seventh story chapter is about wonder.
+
+Facts are chosen to be stable and checkable; a claim that has recently changed was left out. Everything stays on the device.
+
 ## Eight presences
 
 They are not UI. They have behavior, and Yadah learns which ones you form relationships with.

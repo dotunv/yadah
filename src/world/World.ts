@@ -9,8 +9,12 @@ import type { EntityId, HypId, Obs } from '../engine/types'
 import { giftPos, render } from './draw'
 import type { Dir, PlaceId } from '../engine/places'
 import { startMode, updateMode } from './depth'
+import { updateKnowledge, type Card, type Quiz } from './know'
 import { controlLamp, fire, updateEvents, type Ghost } from './events'
-import { dirToward, doorPoint, doorsOf, presentOf, relocate, travel, updateHouse } from './house'
+import { factsOf, type FarId } from '../engine/knowledge'
+import { isFar } from '../engine/places'
+import { factPos } from './far'
+import { dirToward, dive, doorPoint, doorsOf, inPond, presentOf, relocate, travel, updateHouse } from './house'
 import { Sound } from './sound'
 import { clamp, ease, lerp, rngOf, type Ent, type Enc, type Lamp, type Mote, type Speck, type Title, type Whisper } from './scene'
 
@@ -54,9 +58,11 @@ export class World {
   titles: Title[] = []
   /** The house */
   place: PlaceId = 'hall'
-  transition: null | { t: number; to: PlaceId; dir: Dir; swapped: boolean } = null
+  transition: null | { t: number; to: PlaceId; dir: Dir; swapped: boolean; via?: 'pond' } = null
   /** 0..1 — the dark between two places. */
   curtain = 0
+  /** Going through water is a flash of light, not a fade to dark. */
+  curtainWater = false
   doorAppear: Record<string, number> = {}
   doorDwell: Record<string, number> = {}
   /** After walking through a door you must step away from the next one before it opens again. */
@@ -82,6 +88,17 @@ export class World {
   lampOut: null | { t: number; dur: number } = null
   doorFlash: Record<string, number> = {}
   nextEventAt = 30
+  /** What you have just been told, and Yadah's question about what you kept. */
+  card: Card | null = null
+  quiz: Quiz | null = null
+  factAcc: Record<string, number> = {}
+  factCool: Record<string, number> = {}
+  souvenirTold: Record<string, number> = {}
+  pondDwell = 0
+  lastQuiz = -99
+  lastFar: string | null = null
+  /** A brief swell on everything, when something is learned. */
+  pop = 0
   giftQueue: { id: EntityId; at: number }[] = []
   giftTold: Partial<Record<EntityId, number>> = {}
   lastFollow = -99
@@ -184,6 +201,16 @@ export class World {
     this.sound.chime(from)
     this.diary(`${DEF[from].name} gave you ${g.name}.`)
     e.pop = 0.35
+  }
+
+  /** Where the lights of the current far place hang (for the accessible controls and tests). */
+  factSpots(): { id: string; x: number; y: number }[] {
+    return isFar(this.place) ? factsOf(this.place).map((f) => { const [x, y] = factPos(this, f); return { id: f.id, x, y } }) : []
+  }
+
+  /** Go through the pond, to one far place (or a random one). */
+  dive(to?: FarId) {
+    dive(this, to)
   }
 
   /** For the accessible controls: take a door. */
@@ -386,6 +413,11 @@ export class World {
     if (this.enc && !this.enc.leaving) {
       const e = this.byId[this.enc.id]
       if (this.enc.id !== 'seed' && this.enc.id !== 'vigil' && this.enc.id !== 'wanderer' && Math.hypot(this.lamp.x - e.x, this.lamp.y - e.y) > e.r * e.scale * 3.4 + 120) this.leave()
+      return
+    }
+    // the pond: a firm press in the water is a dive
+    if (this.place === 'garden' && inPond(this, this.lamp.x, this.lamp.y)) {
+      dive(this)
       return
     }
     // a door under the lamp
@@ -916,6 +948,7 @@ export class World {
       this.hooks.place?.(this.place)
     }
     updateEvents(this, dt)
+    updateKnowledge(this, dt)
     this.ents.forEach((e, n) => {
       if (e.place === this.place) this.updateEnt(e, n, dt, intent)
     })
