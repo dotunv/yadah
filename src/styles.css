@@ -29,8 +29,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .notyet:hover, .notyet:focus-visible { color: var(--paper); outline: none; }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
-.forget { position: absolute; right: 22px; bottom: 16px; display: flex; gap: 0.9rem; align-items: baseline; font-style: italic; font-size: 0.95rem; color: var(--paper-dim); opacity: 0.35; transition: opacity .6s; }
-.forget:hover, .forget:focus-within { opacity: 0.95; }
+.forget { position: absolute; right: 22px; bottom: 16px; display: flex; gap: 0.9rem; align-items: baseline; font-style: italic; font-size: 0.95rem; color: var(--paper-dim); opacity: 0; transition: opacity .8s; }
+.forget.near, .forget:hover, .forget:focus-within { opacity: 0.9; }
 .forget button:hover, .forget button:focus-visible { color: var(--lamp); outline: none; }
 
 /* debug: the one place that speaks plainly */

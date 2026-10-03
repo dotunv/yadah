@@ -25,6 +25,8 @@ export class Sound {
   private voices = {} as Record<EntityId, { g: GainNode; a: OscillatorNode; b: OscillatorNode }>
   private swell = 0
   private pad?: GainNode
+  private padOsc: OscillatorNode[] = []
+  private held: { o: OscillatorNode; g: GainNode } | null = null
   private tension = 0
   muted = false
 
@@ -104,6 +106,7 @@ export class Sound {
         o.frequency.value = f
         o.connect(pad)
         o.start()
+        this.padOsc.push(o)
       }
       pad.connect(tone)
       this.pad = pad
@@ -145,6 +148,36 @@ export class Sound {
     this.pad.gain.setTargetAtTime(0.05 + 0.2 * p, ctx.currentTime, 0.4)
   }
 
+  /** Passing through a doorway: a breath of filtered noise. */
+  whoosh() {
+    const ctx = this.ctx
+    if (!ctx || this.muted || !this.tone) return
+    const len = Math.floor(ctx.sampleRate * 1.2)
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate)
+    const d = buf.getChannelData(0)
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.sin((i / len) * Math.PI)
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    const f = ctx.createBiquadFilter()
+    f.type = 'bandpass'
+    f.Q.value = 0.8
+    f.frequency.setValueAtTime(300, ctx.currentTime)
+    f.frequency.exponentialRampToValueAtTime(1800, ctx.currentTime + 0.6)
+    f.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 1.2)
+    const g = ctx.createGain()
+    g.gain.value = 0.18
+    src.connect(f).connect(g).connect(this.tone)
+    src.start()
+  }
+
+  /** Each place sits a little differently under the same chord. */
+  setPlace(id: string) {
+    const ctx = this.ctx
+    if (!ctx) return
+    const mult = { hall: 1, archive: 0.89, garden: 1.122, shore: 0.75 }[id] ?? 1
+    this.padOsc.forEach((o, i) => o.frequency.setTargetAtTime([55, 82.4][i] * mult, ctx.currentTime, 1.2))
+  }
+
   /** A soft pluck of one presence's note. */
   pluck(id: EntityId, octave = 2, vel = 0.12) {
     this.note(NOTE[id] * octave, vel, 1.8)
@@ -175,6 +208,38 @@ export class Sound {
   release() {
     this.swell = 1
     ;[0, 1, 2, 3].forEach((i) => setTimeout(() => this.note(110 * [2, 3, 4, 6][i], 0.09, 3.4), i * 220))
+  }
+
+  /** Hold a note while someone calls. */
+  holdStart(freq: number) {
+    const ctx = this.ctx
+    if (!ctx || this.muted || !this.tone || this.held) return
+    const o = ctx.createOscillator()
+    const g = ctx.createGain()
+    o.type = 'sine'
+    o.frequency.value = freq
+    g.gain.setValueAtTime(0.0001, ctx.currentTime)
+    g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime + 0.08)
+    o.connect(g).connect(this.tone)
+    o.start()
+    this.held = { o, g }
+  }
+
+  holdSet(freq: number) {
+    if (this.held && this.ctx) this.held.o.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.05)
+  }
+
+  holdStop() {
+    const h = this.held
+    const ctx = this.ctx
+    if (!h || !ctx) return
+    h.g.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.12)
+    h.o.stop(ctx.currentTime + 0.6)
+    this.held = null
+  }
+
+  play(freq: number, vel = 0.1, dur = 2) {
+    this.note(freq, vel, dur)
   }
 
   private note(freq: number, vel: number, dur: number) {

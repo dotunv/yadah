@@ -1,6 +1,7 @@
 import { DEF } from '../engine/entities'
 import { clamp, ease, lerp, rngOf, type Ent } from './scene'
 import type { World } from './World'
+import { drawDoors, drawLife, drawProps, ground } from './places'
 
 /**
  * Everything is cut paper and ink in a dark room, lit by a lamp you carry.
@@ -79,11 +80,10 @@ export function render(w: World) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.globalAlpha = 1
   ctx.globalCompositeOperation = 'source-over'
-  const hue = w.atm.hue
-  const chroma = w.atm.chroma
 
   // ── the floor ────────────────────────────────────────────────────────
-  ctx.fillStyle = col(0.44, 0.012 + chroma * 0.55, hue)
+  const gr = ground(w)
+  ctx.fillStyle = col(gr.l, gr.chroma, gr.hue)
   ctx.fillRect(0, 0, W, H)
   if (g.tex) {
     ctx.save()
@@ -93,13 +93,14 @@ export function render(w: World) {
     ctx.fillRect(0, 0, W, H)
     ctx.restore()
   }
-  drawWordmark(w, ctx)
+  if (w.place === 'hall') drawWordmark(w, ctx)
+  drawProps(w, ctx)
   drawMarks(w, ctx)
   drawTrails(w, ctx)
   drawEncounterFloor(w, ctx)
 
   // ── the things ───────────────────────────────────────────────────────
-  const sorted = [...w.ents].sort((a, b) => a.y - b.y)
+  const sorted = [...w.present].sort((a, b) => a.y - b.y)
   for (const e of sorted) drawEntity(w, ctx, e)
 
   // ── the dark ─────────────────────────────────────────────────────────
@@ -107,16 +108,26 @@ export function render(w: World) {
   ctx.drawImage(g.dark, 0, 0, W, H)
 
   // ── things that are seen regardless of light ─────────────────────────
+  drawLife(w, ctx)
+  drawDoors(w, ctx)
   drawAir(w, ctx)
   drawSpecks(w, ctx)
   drawBeacon(w, ctx)
   drawGhost(w, ctx)
   drawVigil(w, ctx)
+  drawTug(w, ctx)
+  drawGhost2(w, ctx)
+  drawGifts(w, ctx)
+  drawDepth(w, ctx)
   drawWhispers(w, ctx)
   drawTitles(w, ctx)
   drawReveal(w, ctx)
   drawShock(w, ctx)
   drawLamp(w, ctx)
+  if (w.curtain > 0.01) {
+    ctx.fillStyle = `rgba(4,5,5,${w.curtain})`
+    ctx.fillRect(0, 0, W, H)
+  }
 }
 
 // ───────────────────────────── the floor ─────────────────────────────
@@ -158,6 +169,7 @@ function drawMarks(w: World, ctx: CanvasRenderingContext2D) {
   const marks = w.brain.profile.marks
   const enc = w.enc?.id === 'archivist'
   marks.forEach((m, i) => {
+    if ((m.place ?? 'hall') !== w.place) return
     const r = rngOf(i * 97 + 13)
     const def = m.e ? DEF[m.e] : null
     const bond = m.e ? w.brain.profile.entities[m.e].bond : 0
@@ -178,7 +190,7 @@ function drawMarks(w: World, ctx: CanvasRenderingContext2D) {
     }
   })
   // where something used to live
-  for (const e of w.ents) {
+  for (const e of w.ents.filter((q) => q.place === w.place)) {
     if (!w.brain.profile.entities[e.id].gone) continue
     ctx.fillStyle = col(0.06, 0.005, w.atm.hue, 0.5)
     ctx.beginPath()
@@ -189,7 +201,7 @@ function drawMarks(w: World, ctx: CanvasRenderingContext2D) {
 
 function drawTrails(w: World, ctx: CanvasRenderingContext2D) {
   const e = w.byId.wanderer
-  if (e.trail.length < 2) return
+  if (e.place !== w.place || e.trail.length < 2) return
   const life = w.enc?.id === 'wanderer' ? 14 : 7
   ctx.lineCap = 'round'
   for (let i = 1; i < e.trail.length; i++) {
@@ -588,11 +600,11 @@ function drawDarkness(w: World, g: Gfx) {
 
   const base = (190 + Math.min(W, H) * 0.19) * w.atm.lamp
   const bell = w.phase === 'release' ? Math.sin(Math.PI * clamp(w.releaseT / 3)) : 0
-  const lit = ease(clamp(w.ignite)) * (w.ignite < 1 ? 0.82 + 0.18 * Math.sin(w.t * 31) * Math.sin(w.t * 17) : 1)
+  const lit = ease(clamp(w.ignite)) * (w.ignite < 1 ? 0.82 + 0.18 * Math.sin(w.t * 31) * Math.sin(w.t * 17) : 1) * (1 - 0.55 * w.flicker * Math.abs(Math.sin(w.t * 23))) * (1 - 0.98 * w.blackout)
   const R = base * (1 - 0.22 * w.dim - 0.55 * w.hush - 0.25 * w.night) * (1 + 3.2 * bell) * lit
   hole(c, w.lamp.x, w.lamp.y, R, 1)
 
-  for (const e of w.ents) {
+  for (const e of w.present) {
     const r = e.r * e.scale
     let a = (0.3 + 0.55 * e.awake) * e.appear
     let rad = r * (2.3 + 1.2 * e.awake)
@@ -604,7 +616,7 @@ function drawDarkness(w: World, g: Gfx) {
       a = 0.95
       rad = r * 3.2
     }
-    hole(c, e.x, e.y, rad, a * (1 - 0.7 * w.hush))
+    hole(c, e.x, e.y, rad * (1 + 0.8 * w.blackout), Math.min(1, a * (1 + 1.4 * w.blackout)) * (1 - 0.7 * w.hush))
   }
   if (w.enc?.id === 'archivist') {
     for (const m of w.brain.profile.marks) hole(c, m.x * W, m.y * H, 34, 0.55)
@@ -625,10 +637,10 @@ function drawAir(w: World, ctx: CanvasRenderingContext2D) {
   const R = (190 + Math.min(w.w, w.h) * 0.19) * w.atm.lamp * ease(clamp(w.ignite)) * (1 - 0.55 * w.hush)
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
-  for (const e of w.ents) {
+  for (const e of w.present) {
     if (e.appear < 0.2) continue
     const mem = w.brain.profile.entities[e.id]
-    const a = (0.05 + 0.22 * e.awake) * e.appear * (1 - 0.7 * w.hush)
+    const a = (0.05 + 0.22 * e.awake) * e.appear * (1 - 0.7 * w.hush) * (1 + 2.2 * w.blackout)
     const r = e.r * e.scale * (2.2 + 0.4 * Math.sin(e.phase))
     const g = ctx.createRadialGradient(e.x, e.y, e.r * e.scale * 0.6, e.x, e.y, r)
     g.addColorStop(0, col(0.8, 0.012 + 0.16 * mem.bond, e.def.hue, a))
@@ -652,7 +664,7 @@ function drawAir(w: World, ctx: CanvasRenderingContext2D) {
     const d = Math.hypot(m.x - L.x, m.y - L.y)
     let a = clamp(1 - d / (R * 0.95)) * 0.5
     // dust also catches the glow of the things that are awake
-    for (const e of w.ents) {
+    for (const e of w.present) {
       const de = Math.hypot(m.x - e.x, m.y - e.y)
       const ra = e.r * e.scale * 3.2
       if (de < ra) a = Math.max(a, (1 - de / ra) * 0.3 * e.awake)
@@ -817,6 +829,204 @@ function drawVigil(w: World, ctx: CanvasRenderingContext2D) {
   ctx.restore()
 }
 
+/** The cord between your lamp and whatever has taken it. */
+function drawTug(w: World, ctx: CanvasRenderingContext2D) {
+  if (!w.tug) return
+  const e = w.byId[w.tug.by]
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  ctx.strokeStyle = col(0.9, 0.08, DEF.wanderer.hue, 0.5)
+  ctx.lineWidth = 1.6
+  ctx.setLineDash([3, 6])
+  ctx.lineDashOffset = -w.t * 40
+  ctx.beginPath()
+  ctx.moveTo(w.lamp.x, w.lamp.y)
+  ctx.quadraticCurveTo((w.lamp.x + e.x) / 2 + Math.sin(w.t * 3) * 14, (w.lamp.y + e.y) / 2 + Math.cos(w.t * 2.4) * 14, e.x, e.y)
+  ctx.stroke()
+  ctx.restore()
+}
+
+/** Someone crossing who is not any of them: a small warm light, and where it has been. */
+function drawGhost2(w: World, ctx: CanvasRenderingContext2D) {
+  const g = w.ghost
+  if (!g) return
+  const a = clamp(Math.min((w.t - g.t0) / 2, 1)) * 0.8
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  const grad = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, 90)
+  grad.addColorStop(0, col(0.88, 0.07, 62, 0.4 * a))
+  grad.addColorStop(1, col(0.8, 0.05, 62, 0))
+  ctx.fillStyle = grad
+  ctx.beginPath()
+  ctx.arc(g.x, g.y, 90, 0, 6.3)
+  ctx.fill()
+  ctx.fillStyle = col(0.95, 0.04, 70, a)
+  ctx.beginPath()
+  ctx.arc(g.x, g.y, 3, 0, 6.3)
+  ctx.fill()
+  // footfalls
+  for (let i = 1; i < 9; i++) {
+    const fx = g.x - Math.sign(g.vx || 1) * i * 34
+    ctx.fillStyle = col(0.8, 0.04, 62, a * (1 - i / 9) * 0.35)
+    ctx.beginPath()
+    ctx.ellipse(fx, g.y + (i % 2 ? 12 : -12) + 18, 4, 7, 0, 0, 6.3)
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
+/** Where gift number i lies on the hearth ring. */
+export function giftPos(w: World, i: number, n: number): [number, number] {
+  const x = w.w * 0.5
+  const y = w.h * 0.64
+  const R = Math.min(w.w, w.h) * 0.085
+  const a = Math.PI * (0.05 + (0.9 * (i + 0.5)) / Math.max(n, 4)) + Math.PI
+  return [x + Math.cos(a) * R * 1.5, y + Math.sin(a) * R * 0.95 - 4]
+}
+
+/** What you have been given, lying on the hearth ring in the hall. */
+function drawGifts(w: World, ctx: CanvasRenderingContext2D) {
+  if (w.place !== 'hall') return
+  const gifts = w.brain.profile.gifts
+  if (!gifts.length) return
+  const x = w.w * 0.5
+  const y = w.h * 0.64
+  const R = Math.min(w.w, w.h) * 0.085
+  ctx.save()
+  gifts.forEach((g, i) => {
+    const a = Math.PI * (0.05 + (0.9 * (i + 0.5)) / Math.max(gifts.length, 4)) + Math.PI
+    const gx = x + Math.cos(a) * R * 1.5
+    const gy = y + Math.sin(a) * R * 0.95 - 4 + Math.sin(w.t * 0.8 + i) * 1.5 * w.motion
+    const hue = DEF[g.from].hue
+    const near = clamp(1 - Math.hypot(w.lamp.x - gx, w.lamp.y - gy) / 160)
+    ctx.globalCompositeOperation = 'lighter'
+    const gl = ctx.createRadialGradient(gx, gy, 0, gx, gy, 26 + 20 * near)
+    gl.addColorStop(0, col(0.85, 0.12, hue, 0.25 + 0.4 * near))
+    gl.addColorStop(1, col(0.7, 0.08, hue, 0))
+    ctx.fillStyle = gl
+    ctx.beginPath()
+    ctx.arc(gx, gy, 26 + 20 * near, 0, 6.3)
+    ctx.fill()
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.fillStyle = col(0.86, 0.04 + 0.1 * near, hue)
+    ctx.strokeStyle = col(0.2, 0.01, hue, 0.8)
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    switch (g.from) {
+      case 'listener':
+        ctx.arc(gx, gy, 7, 0, 6.3)
+        break
+      case 'wanderer':
+        ctx.ellipse(gx, gy, 3, 11, 0.6, 0, 6.3)
+        break
+      case 'mirror':
+        ctx.moveTo(gx - 7, gy + 6)
+        ctx.lineTo(gx + 2, gy - 9)
+        ctx.lineTo(gx + 8, gy + 5)
+        ctx.closePath()
+        break
+      case 'archivist':
+        ctx.rect(gx - 8, gy - 5, 16, 11)
+        break
+      case 'witness':
+        ctx.arc(gx, gy, 6, 0, 6.3)
+        break
+      default:
+        ctx.ellipse(gx, gy, 8, 5.5, 0.3, 0, 6.3)
+    }
+    ctx.fill()
+    ctx.stroke()
+  })
+  ctx.restore()
+}
+
+/** The second forms: the call, last visit's path, the diary's slips. Seen regardless of light. */
+function drawDepth(w: World, ctx: CanvasRenderingContext2D) {
+  const enc = w.enc
+  if (!enc) return
+  const d = enc.data as Record<string, any>
+  const e = w.byId[enc.id]
+  const fade = enc.leaving ? clamp(1 - (w.t - enc.leaveAt) / 1.2) : 1
+  ctx.save()
+  ctx.globalAlpha = fade
+  ctx.globalCompositeOperation = 'lighter'
+  if (d.mode === 'call') {
+    // rings from the listener each time it answers; and one from your lamp while you call
+    for (const t0 of d.rings as number[]) {
+      const age = w.t - t0
+      if (age < 0 || age > 3.2) continue
+      for (let k = 0; k < 3; k++) {
+        const q = clamp(age / 3.2 - k * 0.08)
+        ctx.strokeStyle = col(0.9, 0.08, DEF.listener.hue, (1 - q) * 0.7)
+        ctx.lineWidth = 2 * (1 - q) + 0.5
+        ctx.beginPath()
+        ctx.arc(e.x, e.y, e.r * e.scale * (1 + q * 4), 0, 6.3)
+        ctx.stroke()
+      }
+    }
+    if (d.calling) {
+      const q = (w.t * 1.4) % 1
+      ctx.strokeStyle = col(0.92, 0.09, 85, (1 - q) * 0.7)
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(w.lamp.x, w.lamp.y, 10 + q * 70, 0, 6.3)
+      ctx.stroke()
+    }
+  }
+  if (d.mode === 'past') {
+    const pts = w.brain.profile.prevPath
+    const n = Math.floor(pts.length / 2)
+    const head = Math.min(n - 1, Math.floor(clamp(((d.t as number) ?? 0) / 16) * n))
+    ctx.lineCap = 'round'
+    for (let i = 1; i <= head; i++) {
+      const age = 1 - (head - i) / n
+      ctx.strokeStyle = col(0.88, 0.07, DEF.mirror.hue, 0.6 * age * age)
+      ctx.lineWidth = 1 + 2.2 * age
+      ctx.beginPath()
+      ctx.moveTo(pts[(i - 1) * 2] * w.w, pts[(i - 1) * 2 + 1] * w.h)
+      ctx.lineTo(pts[i * 2] * w.w, pts[i * 2 + 1] * w.h)
+      ctx.stroke()
+    }
+    const hx = pts[head * 2] * w.w
+    const hy = pts[head * 2 + 1] * w.h
+    const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, 80)
+    g.addColorStop(0, col(0.95, 0.06, DEF.mirror.hue, 0.7))
+    g.addColorStop(1, col(0.8, 0.04, DEF.mirror.hue, 0))
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.arc(hx, hy, 80, 0, 6.3)
+    ctx.fill()
+  }
+  if (d.mode === 'diary') {
+    for (const s of d.slips as { x: number; y: number; read: boolean }[]) {
+      const near = clamp(1 - Math.hypot(w.lamp.x - s.x, w.lamp.y - s.y) / 120)
+      const gl = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 40 + 20 * near)
+      gl.addColorStop(0, col(0.88, 0.1, DEF.archivist.hue, (s.read ? 0.12 : 0.3) + 0.3 * near))
+      gl.addColorStop(1, col(0.7, 0.06, DEF.archivist.hue, 0))
+      ctx.fillStyle = gl
+      ctx.beginPath()
+      ctx.arc(s.x, s.y, 40 + 20 * near, 0, 6.3)
+      ctx.fill()
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.fillStyle = col(s.read ? 0.55 : 0.88, 0.01, w.atm.hue, 0.95)
+      ctx.save()
+      ctx.translate(s.x, s.y)
+      ctx.rotate(Math.sin(s.x) * 0.3)
+      ctx.fillRect(-14, -9, 28, 18)
+      ctx.strokeStyle = col(0.2, 0.01, w.atm.hue, 0.5)
+      ctx.beginPath()
+      ctx.moveTo(-9, -3)
+      ctx.lineTo(9, -3)
+      ctx.moveTo(-9, 3)
+      ctx.lineTo(4, 3)
+      ctx.stroke()
+      ctx.restore()
+      ctx.globalCompositeOperation = 'lighter'
+    }
+  }
+  ctx.restore()
+}
+
 function drawWhispers(w: World, ctx: CanvasRenderingContext2D) {
   for (const s of w.whispers) {
     const inn = clamp((w.t - s.t0) / 0.9)
@@ -908,7 +1118,7 @@ function drawShock(w: World, ctx: CanvasRenderingContext2D) {
 
 function drawLamp(w: World, ctx: CanvasRenderingContext2D) {
   const L = w.lamp
-  const k = 1 - 0.7 * w.hush
+  const k = (1 - 0.7 * w.hush) * (1 - 0.95 * w.blackout) * (1 - 0.5 * w.flicker * Math.abs(Math.sin(w.t * 23)))
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   const r = 60 + Math.min(40, L.speed * 0.05)

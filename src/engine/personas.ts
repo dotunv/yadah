@@ -72,7 +72,7 @@ export function seedProfile(persona: Persona, now = Date.now()): Profile {
     const m = p.entities[id]
     m.bond = bond
     m.touches = bond > 0 ? Math.round(1 + bond * 6) : 0
-    m.completions = bond > 0.4 ? 1 : 0
+    m.completions = Math.min(4, Math.round(bond * 3.4))
     m.dwellMs = bond * 60000
     m.firstMet = bond > 0 ? now - 86_400_000 : 0
     m.lastTouched = bond > 0 ? now - 3_600_000 : 0
@@ -113,6 +113,19 @@ export function seedProfile(persona: Persona, now = Date.now()): Profile {
       })
     }
   }
+  // what has happened between you, in Yadah's words, and the places it has seen you go
+  const first = ENTITIES.filter((d) => (persona.bonds[d.id] ?? 0) > 0.3).map((d) => d.name)
+  p.diary = [
+    { visit: 1, text: `you met ${first[0] ?? 'the listener'}.` },
+    { visit: 1, text: 'a door opened to the garden.' },
+    { visit: 2, text: `you stayed with ${first[1] ?? first[0] ?? 'the witness'}.` },
+    { visit: 2, text: 'the wanderer took your light, once.' },
+    { visit: 3, text: 'you went to the shore for the first time.' },
+  ]
+  p.gifts = ENTITIES.filter((d) => (persona.bonds[d.id] ?? 0) >= 0.6).map((d) => ({ from: d.id, visit: 2 }))
+  p.discovered = ['hall', 'archive', 'garden', 'shore']
+  p.chapters = ['place:hall', 'place:archive', 'place:garden', 'place:shore']
+  p.prevPath = Array.from({ length: 70 }, (_, i) => [0.18 + (i / 70) * 0.64, 0.52 + Math.sin(i / 7 + (persona.bonds.listener ?? 0.3) * 4) * 0.2]).flat()
   p.inputs = { key: persona.keys ?? 6, click: persona.keys ? 3 : 60, move: 200 }
   p.pace = persona.id === 'still' ? 0.2 : persona.id === 'chaser' ? 0.8 : 0.5
   p.revealed = false

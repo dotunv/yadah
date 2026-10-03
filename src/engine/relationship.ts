@@ -1,4 +1,5 @@
 import { ENTITIES } from './entities'
+import { PLACES, guestSlot, placeOf, type PlaceId } from './places'
 import { ENTITY_IDS, type EntityId, type Profile } from './types'
 
 /**
@@ -11,6 +12,8 @@ import { ENTITY_IDS, type EntityId, type Profile } from './types'
 
 export interface EntityIntent {
   gone: boolean
+  /** Where it lives now: its own room, or the hall once it has come to know you. */
+  place: PlaceId
   home: [number, number]
   awake: number
   scale: number
@@ -41,14 +44,18 @@ export function relate(p: Profile, expression: number): WorldIntent {
   let vx = 0
   let vy = 0
 
+  // things that have come home to the hall take places around the hearth
+  const guests = ENTITIES.filter((d) => placeOf(p, d.id) === 'hall' && !PLACES.hall.homes[d.id]).map((d) => d.id)
+
   for (const def of ENTITIES) {
     const m = p.entities[def.id]
     total += m.gone ? 0 : m.bond
-    let [x, y] = def.base
+    const place = placeOf(p, def.id)
+    let [x, y] = PLACES[place].homes[def.id] ?? guestSlot(guests.indexOf(def.id), guests.length)
 
-    if (m.bond > 0.12) {
-      // Close things come closer, and keep a place near you.
-      const pull = clamp(m.bond * 0.62 * expression, 0, 0.6)
+    if (place === 'hall' && m.bond > 0.12) {
+      // Close things in the hall come closer, and keep a place near you.
+      const pull = clamp(m.bond * 0.5 * expression, 0, 0.5)
       x += (hearth[0] - x) * pull
       y += (hearth[1] - y) * pull
     }
@@ -66,6 +73,7 @@ export function relate(p: Profile, expression: number): WorldIntent {
     }
     entities[def.id] = {
       gone: m.gone,
+      place,
       home: [clamp(x, 0.07, 0.93), clamp(y, 0.1, 0.9)],
       awake: clamp(m.bond * 1.5 * (0.4 + 0.6 * expression)),
       scale: 1 + 0.42 * m.bond * expression,

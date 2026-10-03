@@ -120,6 +120,17 @@ export const HYPS: HypDef[] = [
       return {}
     },
   },
+  {
+    id: 'roam',
+    claim: 'You don’t stay in one room.',
+    opposite: 'You stay where it is warm.',
+    doubt: 'I thought you would keep going.',
+    weigh: (o) => {
+      if (o.t === 'travel') return { support: o.first ? 1.2 : 0.5 }
+      if (o.t === 'stay') return { contra: Math.min(0.8, o.ms / 240000) }
+      return {}
+    },
+  },
 ]
 
 export const HYP = Object.fromEntries(HYPS.map((h) => [h.id, h])) as Record<HypId, HypDef>

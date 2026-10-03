@@ -1,4 +1,5 @@
 import type { EntityDef } from '../engine/entities'
+import type { Dir, PlaceId } from '../engine/places'
 import type { EntityId, HypId } from '../engine/types'
 
 export interface Trail {
@@ -42,6 +43,14 @@ export interface Ent {
   drift: number
   rustle: number
   heading: number
+  /** Which place it is in right now. Not always the one it lives in. */
+  place: PlaceId
+  /** Where it is meant to live now. When this changes it moves house. */
+  homePlace: PlaceId
+  /** Walking out through a door. */
+  leaving: null | { to: PlaceId; dir: Dir }
+  /** Where it has chosen to stand while visiting a place that is not its own. */
+  visit: null | { x: number; y: number }
   // observation accumulators
   near: { on: boolean; since: number; acc: number; still: number; touched: boolean }
   chaseAcc: number

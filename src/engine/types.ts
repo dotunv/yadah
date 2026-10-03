@@ -9,7 +9,7 @@
 export const ENTITY_IDS = ['listener', 'wanderer', 'mirror', 'archivist', 'stranger', 'witness', 'seed', 'vigil'] as const
 export type EntityId = (typeof ENTITY_IDS)[number]
 
-export const HYP_IDS = ['stillness', 'pursuit', 'return', 'offpath', 'patience', 'hands', 'endure'] as const
+export const HYP_IDS = ['stillness', 'pursuit', 'return', 'offpath', 'patience', 'hands', 'endure', 'roam'] as const
 export type HypId = (typeof HYP_IDS)[number]
 
 /** What the world remembers about one entity's relationship with this person. */
@@ -43,6 +43,8 @@ export interface Mark {
   w: number
   /** The entity nearest when it happened, if any. */
   e: EntityId | null
+  /** Which place it was left in. Older marks were all left in the hall. */
+  place?: string
   /** 1 when fresh. Marks nobody returns to go dark, and then are gone. */
   life: number
   dead?: boolean
@@ -95,6 +97,16 @@ export interface Profile {
   chapters: string[]
   /** The story reached its end. */
   ended: boolean
+  /** Places whose doors have already appeared. */
+  discovered: string[]
+  /** Things you were given, and by whom. They stay in the hall. */
+  gifts: { from: EntityId; visit: number }[]
+  /** Yadah's record of what happened between you, in its own words. */
+  diary: { visit: number; text: string }[]
+  /** Where the lamp went this visit, flattened (x,y,x,y…), normalised. */
+  path: number[]
+  /** Where it went last visit. The mirror remembers. */
+  prevPath: number[]
   /** 0 (slow, careful) .. 1 (quick) — an exponential average of lamp pace. */
   pace: number
   inputs: { key: number; click: number; move: number }
@@ -124,6 +136,12 @@ export type Obs =
   | { t: 'mark'; mark: Omit<Mark, 'visit' | 'life' | 'dead'> }
   | { t: 'renew'; index: number }
   | { t: 'prune' }
+  | { t: 'travel'; to: string; first: boolean }
+  | { t: 'stay'; ms: number }
+  | { t: 'gift'; from: EntityId }
+  | { t: 'diary'; text: string }
+  | { t: 'discover'; place: string }
+  | { t: 'path'; pts: number[] }
   | { t: 'chapter'; chapter: string }
   | { t: 'end' }
   | { t: 'misread'; misread: Omit<Misread, 'visit' | 'corrected'> }

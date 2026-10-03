@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Brain } from './brain'
 import { Debug } from './Debug'
 import { ENTITIES } from './engine/entities'
+import { PLACES, unlocked, type Dir, type PlaceId } from './engine/places'
 import { World, type Phase } from './world/World'
 
 const brain = new Brain()
@@ -17,6 +18,8 @@ export default function App() {
   const [beacon, setBeacon] = useState(false)
   const [live, setLive] = useState('')
   const [debug, setDebug] = useState(false)
+  const [place, setPlace] = useState<PlaceId>('hall')
+  const [corner, setCorner] = useState(false)
   const [confirm, setConfirm] = useState(false)
   const [muted, setMuted] = useState(() => {
     try {
@@ -36,7 +39,7 @@ export default function App() {
         document.fonts.load('800 100px "Bricolage Grotesque Variable"'),
       ]).catch(() => undefined)
       if (dead || !canvas.current) return
-      w = new World(canvas.current, brain, { whisper: setLive, phase: setPhase, awaiting: setAwaiting, beacon: setBeacon })
+      w = new World(canvas.current, brain, { whisper: setLive, phase: setPhase, awaiting: setAwaiting, beacon: setBeacon, place: setPlace })
       setWorld(w)
       ;(window as unknown as { yadah: unknown }).yadah = { world: w, brain }
     })()
@@ -58,6 +61,13 @@ export default function App() {
     return () => removeEventListener('keydown', k)
   }, [awaiting, world])
 
+  // the quiet controls only show themselves when you go looking for them
+  useEffect(() => {
+    const on = (e: PointerEvent) => setCorner(e.clientX > innerWidth - 300 && e.clientY > innerHeight - 110)
+    addEventListener('pointermove', on, { passive: true })
+    return () => removeEventListener('pointermove', on)
+  }, [])
+
   useSyncExternalStore(
     (cb) => brain.subscribe(cb),
     () => brain.profile.updatedAt,
@@ -74,6 +84,13 @@ export default function App() {
             {e.name}
           </button>
         ))}
+        {(Object.entries(PLACES[place].doors) as [Dir, PlaceId][])
+          .filter(([, to]) => unlocked(brain.profile).includes(to))
+          .map(([dir, to]) => (
+            <button key={dir} onClick={() => world?.go(dir)}>
+              Go to {PLACES[to].name}
+            </button>
+          ))}
         {beacon && <button onClick={() => world?.startReveal()}>Yadah has something to tell you</button>}
       </nav>
       <div className="sr" aria-live="polite">
@@ -91,7 +108,7 @@ export default function App() {
         </div>
       )}
 
-      <div className="forget">
+      <div className={`forget${corner ? ' near' : ''}`}>
         {confirm ? (
           <>
             <span>forget everything I know about you?</span>

@@ -30,6 +30,11 @@ export function createProfile(now = Date.now()): Profile {
     misreads: [],
     chapters: [],
     ended: false,
+    discovered: ['hall', 'archive'],
+    gifts: [],
+    diary: [],
+    path: [],
+    prevPath: [],
     pace: 0.5,
     inputs: { key: 0, click: 0, move: 0 },
     activeMs: 0,
@@ -56,7 +61,7 @@ export function migrate(p: Profile): Profile {
   for (const id of ENTITY_IDS) entities[id] = { ...blankMemory(), ...entities[id] }
   const hyps = { ...p.hyps }
   for (const id of HYP_IDS) hyps[id] = { ...blankHyp(), ...hyps[id] }
-  return { ...p, entities, hyps, misreads: p.misreads ?? [], chapters: p.chapters ?? [], ended: !!p.ended, marks: p.marks.map((mk) => ({ ...mk, life: mk.life ?? 1 })) }
+  return { ...p, entities, hyps, misreads: p.misreads ?? [], chapters: p.chapters ?? [], ended: !!p.ended, discovered: p.discovered ?? ['hall', 'archive'], gifts: p.gifts ?? [], diary: p.diary ?? [], path: p.path ?? [], prevPath: p.prevPath ?? [], marks: p.marks.map((mk) => ({ ...mk, life: mk.life ?? 1 })) }
 }
 
 /** Days since the previous visit, for how out of practice Yadah is. */
@@ -78,6 +83,9 @@ export function beginVisit(raw: Profile, now = Date.now()): Profile {
     entities: { ...prev.entities },
     hyps: { ...prev.hyps },
     misreads: prev.misreads ?? [],
+    // what the lamp did last time is what the mirror remembers
+    prevPath: prev.path.length > 8 ? prev.path : prev.prevPath,
+    path: [],
   }
   if (prev.visits > 0) {
     for (const id of ENTITY_IDS) {
@@ -86,7 +94,8 @@ export function beginVisit(raw: Profile, now = Date.now()): Profile {
       m.neglect = m.touchedThisVisit ? 0 : m.neglect + 1
       if (m.neglect > 0) m.bond *= 0.94
       m.wary = m.wary + (0.55 - m.wary) * 0.25
-      m.growth = Math.max(0.03, m.growth - (m.neglect > 0 ? 0.04 + Math.min(0.06, away * 0.01) : 0))
+      // a seed you were close to keeps growing while you are gone; one you left shrinks
+      m.growth = m.neglect > 0 ? Math.max(0.03, m.growth - 0.04 - Math.min(0.06, away * 0.01)) : Math.min(1, m.growth + (id === 'seed' ? Math.min(0.2, away * 0.04) * m.bond : 0))
       m.touchedThisVisit = false
       p.entities[id] = m
     }

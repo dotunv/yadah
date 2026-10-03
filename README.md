@@ -61,6 +61,37 @@ listening, following, mirroring, keeping, fearing, watching, growing, enduring. 
 `src/engine/` has no React and no canvas. Change how Yadah understands people there; change how
 the room looks and behaves in `src/world/`. Neither needs the other rewritten.
 
+## A house, not a room
+
+Yadah is a hall with three more places off it: the **archive** (shelves, a window of light, a long table),
+the **garden** (fireflies, a fence, someone's plants) and the **shore** (stars, a moon's road, the vigil at the
+water's edge). You cross between them by holding the lamp at a door. Doors appear when you have earned them
+("a door that wasn't there"), and each place says one thing, once, the first time you arrive.
+
+The presences live in different places. The ones you become close to come to live in the hall, and follow you
+through doors. The wanderer goes where it likes, and the witness remembers where. What the wanderer did while you
+weren't looking is something it can tell you later.
+
+## Things that happen on their own
+
+Every minute or so, never while you are in the middle of something:
+a draught that opens the doors a little; the lamp going out, so that the presences' own light shows;
+the wanderer taking your lamp and leading you, sometimes through a door; someone crossing the room who is none of
+them (and leaving footprints); the stranger passing through on its own errand; the listener calling; and
+gifts left for you by something that has come to know you.
+
+## Knowing more
+
+Each presence has a second way of meeting you, offered only after you have finished the first.
+- **The listener** answers when you call: hold, and hold the light higher or lower for pitch.
+- **The wanderer** takes you on a tour of the whole house.
+- **The mirror** shows you the path your lamp took *last* visit.
+- **The archivist** lays out its diary of what has happened between you, in its own words, including the times it
+  guessed wrong. You read it by holding the lamp over each slip.
+- **The witness** tells you what the house did while you were away.
+- **Gifts** (a shell, a feather, a shard, a stone…) are given once, at the second completion, and stay on the
+  hearth in the hall. They say what they are when you stop beside them.
+
 ## Eight presences
 
 They are not UI. They have behavior, and Yadah learns which ones you form relationships with.

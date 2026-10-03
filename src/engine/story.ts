@@ -130,3 +130,30 @@ export const homeLine = 'welcome home.'
 export const thereYouAre = 'there you are.'
 export const firstPart = 'that was a part of me.'
 export const allParts = 'each of them is a way I know.'
+
+// ───────────────────────────── what happened while you were away ─────────────────────────────
+
+/**
+ * The witness tells you what the house did without you. Some of it is what it
+ * saw this visit (the wanderer coming and going). The rest is invented from
+ * how long you were gone, since no one saw that part either.
+ */
+export function rumours(p: Profile, awayDays: number, offstage: string[]): string[] {
+  const out = [...offstage.slice(-2)]
+  const pool = [
+    'the seed turned toward the door.',
+    'the stranger stood where you usually stand.',
+    'the archivist read its own slips, twice.',
+    'the listener hummed a note and no one answered.',
+    'the mirror showed the room to itself.',
+    'the vigil did not move.',
+    'something crossed the hall at night.',
+  ]
+  let n = p.visits * 7 + Math.round(awayDays * 10)
+  while (out.length < 3) {
+    out.push(pool[n % pool.length])
+    n += 3
+  }
+  if (awayDays > 3) out.unshift('it was quiet for a long time.')
+  return out.slice(0, 3)
+}

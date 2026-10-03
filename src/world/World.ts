@@ -2,10 +2,15 @@ import type { Brain } from '../brain'
 import { DEF, ENTITIES } from '../engine/entities'
 import { HYP, HYPS, confidence } from '../engine/hypotheses'
 import { MISREADS, misreadFor } from '../engine/misread'
+import { GIFTS } from '../engine/gifts'
 import { allParts, endingLines, farewellLines, firstPart, fragment, homeLine, thereYouAre } from '../engine/story'
 import { asleepLine, doubt, firstVisit, goneLine, husk, lateNight, outOfPractice, released, revealLines, say, wakeLine, welcome, wentDark } from '../engine/voice'
 import type { EntityId, HypId, Obs } from '../engine/types'
-import { render } from './draw'
+import { giftPos, render } from './draw'
+import type { Dir, PlaceId } from '../engine/places'
+import { startMode, updateMode } from './depth'
+import { controlLamp, fire, updateEvents, type Ghost } from './events'
+import { dirToward, doorPoint, doorsOf, presentOf, relocate, travel, updateHouse } from './house'
 import { Sound } from './sound'
 import { clamp, ease, lerp, rngOf, type Ent, type Enc, type Lamp, type Mote, type Speck, type Title, type Whisper } from './scene'
 
@@ -17,6 +22,8 @@ export interface WorldHooks {
   /** Reveal text is finished and the person can choose to begin. */
   awaiting?: (v: boolean) => void
   beacon?: (v: boolean) => void
+  /** Which place you are in now. */
+  place?: (p: PlaceId) => void
 }
 
 const ENC_LEN: Record<EntityId, number> = { listener: 6, wanderer: 8, mirror: 3500, archivist: 3, stranger: 7, witness: 12, seed: 4, vigil: 20 }
@@ -45,11 +52,51 @@ export class World {
   focus: EntityId | null = null
   motes: Mote[] = []
   titles: Title[] = []
+  /** The house */
+  place: PlaceId = 'hall'
+  transition: null | { t: number; to: PlaceId; dir: Dir; swapped: boolean } = null
+  /** 0..1 — the dark between two places. */
+  curtain = 0
+  doorAppear: Record<string, number> = {}
+  doorDwell: Record<string, number> = {}
+  /** After walking through a door you must step away from the next one before it opens again. */
+  doorArmed = true
+  /** The pointer, and where the lamp is held right after arriving until your hand really moves. */
+  ptr = { x: 0, y: 0 }
+  lampHold: null | { x: number; y: number } = null
+  discoverAt = 3
+  arrivals: { id: EntityId; at: number }[] = []
+  /** What happened elsewhere while you were not looking. The witness tells it. */
+  offstage: string[] = []
+  hopAt = 55
+  stayMs = 0
+  /** Something has taken the lamp. */
+  tug: null | { t: number; dur: number; by: EntityId; door: Dir | null } = null
+  ghost: Ghost | null = null
+  /** Gifts lying where they were left, until they are carried to the hall. */
+  gifts: { from: EntityId; x: number; y: number; t0: number }[] = []
+  gust = 0
+  gustDir = 1
+  flicker = 0
+  blackout = 0
+  lampOut: null | { t: number; dur: number } = null
+  doorFlash: Record<string, number> = {}
+  nextEventAt = 30
+  giftQueue: { id: EntityId; at: number }[] = []
+  giftTold: Partial<Record<EntityId, number>> = {}
+  lastFollow = -99
+  announced: PlaceId | null = null
+  pathAt = 0
+  pathBuf: number[] = []
+  lastPathSent = 0
+  gifted = 0
+  lastEvent = ''
+  ride: null | { stops: PlaceId[]; i: number; t: number; phase: 'go' | 'stay' } = null
   /** What the reveal-style text is for. */
   script: 'reveal' | 'ending' | 'farewell' = 'reveal'
   /** When the first line of a script appears and how long each is given. */
   pace = { start: 2.2, gap: 3.4 }
-  private farewellDone?: () => void
+  farewellDone?: () => void
   /** Where each letter of the floor wordmark sits, written by the renderer. */
   letters: { x: number; y: number }[] = []
   letterPulse = [0, 0, 0, 0, 0]
@@ -58,26 +105,26 @@ export class World {
   /** 0..1 — the lamp coming on at the start of a visit. */
   ignite = 0
   sound = new Sound()
-  private hinted = new Set<string>()
+  hinted = new Set<string>()
   /** Which of the two held keys are down, and where fingers are. The vigil needs both hands. */
   held = { left: false, right: false }
   readonly touches = new Map<number, number>()
   /** 0..1 — how far the vigil has been held. Gathers the room into stillness. */
   tension = 0
   readonly coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
-  private noteCount = 0
-  private idleHinted = false
+  noteCount = 0
+  idleHinted = false
   /** 0..1 — how late it is. Smoothed so dusk arrives, not flips. */
   night = 0
   /** Deep night and not yet woken: nothing responds. */
   asleep = false
   woken = false
-  private wakeAcc = 0
-  private lastMisread = -60
-  private visitMisreads = 0
-  private pending: { index: number; kind: keyof typeof MISREADS; entity: EntityId | null; t0: number }[] = []
-  private renewAcc: Record<number, number> = {}
-  private pruned = false
+  wakeAcc = 0
+  lastMisread = -60
+  visitMisreads = 0
+  pending: { index: number; kind: keyof typeof MISREADS; entity: EntityId | null; t0: number }[] = []
+  renewAcc: Record<number, number> = {}
+  pruned = false
 
   // reveal
   revealT = 0
@@ -87,17 +134,17 @@ export class World {
 
   // beacon (the held breath)
   beacon = { vis: 0, dwell: 0, on: false }
-  private beaconCooldown = 0
+  beaconCooldown = 0
 
   // memory made visible
-  private markAcc = 0
-  private lastTouch: { x: number; y: number } | null = null
-  private meet: { x: number; y: number; until: number } | null = null
-  private lastProbe = -30
-  private rand: () => number
-  private raf = 0
-  private last = 0
-  private welcomeDone = false
+  markAcc = 0
+  lastTouch: { x: number; y: number } | null = null
+  meet: { x: number; y: number; until: number } | null = null
+  lastProbe = -30
+  rand: () => number
+  raf = 0
+  last = 0
+  welcomeDone = false
   readonly canvas: HTMLCanvasElement
 
   constructor(canvas: HTMLCanvasElement, readonly brain: Brain, private hooks: WorldHooks = {}) {
@@ -121,8 +168,41 @@ export class World {
     this.raf = requestAnimationFrame(this.tick)
   }
 
+  /** Everything that is in the room you are standing in. */
+  get present(): Ent[] {
+    return presentOf(this)
+  }
+
+  /** Something is given to you, and stays in the hall. */
+  giveGift(from: EntityId) {
+    const e = this.byId[from]
+    this.obs({ t: 'gift', from })
+    const g = GIFTS[from]
+    this.gifts.push({ from, x: clamp(this.lamp.x, 60, this.w - 60), y: clamp(this.lamp.y + 40, 60, this.h - 60), t0: this.t })
+    this.whisperAt(e, 'it left this for you.', 0.2)
+    this.say(g.line, clamp(this.lamp.x - 100, 20, this.w - 320), clamp(this.lamp.y + 90, 40, this.h - 30), { t0: this.t + 2.5, dur: 6, size: 22 })
+    this.sound.chime(from)
+    this.diary(`${DEF[from].name} gave you ${g.name}.`)
+    e.pop = 0.35
+  }
+
+  /** For the accessible controls: take a door. */
+  go(dir: Dir) {
+    travel(this, dir)
+  }
+
+  /** Make something happen now (debug). */
+  fire(id: string) {
+    fire(this, id)
+  }
+
+  /** Write a line in Yadah's own record of what has happened between you. */
+  diary(text: string) {
+    this.brain.observe({ t: 'diary', text })
+  }
+
   // ───────────────────────────── setup ─────────────────────────────
-  private spawn() {
+  spawn() {
     const i = this.brain.intent()
     const returning = this.brain.returning
     ENTITIES.forEach((def, n) => {
@@ -131,7 +211,7 @@ export class World {
       const hy = it.home[1] * this.h
       const start = returning ? [i.hearth[0] * this.w, i.hearth[1] * this.h] : [hx, hy]
       const e: Ent = {
-        id: def.id, def, x: start[0], y: start[1], vx: 0, vy: 0, hx, hy,
+        id: def.id, def, place: it.place, homePlace: it.place, leaving: null, visit: null, x: start[0], y: start[1], vx: 0, vy: 0, hx, hy,
         r: 0, scale: 1, awake: 0, phase: this.rand() * 6.28,
         appearAt: (returning ? 3.2 : 0.8) + n * (returning ? 0.45 : 0.55), appear: 0, pop: 0,
         tx: hx, ty: hy, nextTarget: 0, trail: [], gaze: { x: 0, y: 0 }, blink: 0, nextBlink: 2 + this.rand() * 4,
@@ -145,12 +225,13 @@ export class World {
     this.layout()
   }
 
-  private greet() {
+  greet() {
     if (this.welcomeDone) return
     this.welcomeDone = true
     this.night = this.brain.night()
     const sleeping = this.night > 0.9
     const y = this.h * 0.4
+    if (!this.brain.profile.chapters.includes('place:hall')) this.brain.observe({ t: 'chapter', chapter: 'place:hall' })
     const ch = this.brain.chapter()
     if (ch) {
       this.titles.push({ text: ch.title, roman: ch.roman, t0: 0.8, dur: 6.5 })
@@ -180,18 +261,24 @@ export class World {
     ;(this as { onResize?: () => void }).onResize?.()
   }
 
-  private layout() {
+  layout() {
     const s = Math.min(this.w, this.h)
     for (const e of this.ents) e.r = s * e.def.size
   }
 
   // ───────────────────────────── input ─────────────────────────────
-  private cleanup: (() => void)[] = []
-  private bind() {
+  cleanup: (() => void)[] = []
+  bind() {
     const c = this.canvas
     const onMove = (e: PointerEvent) => {
       if (this.touches.has(e.pointerId)) this.touches.set(e.pointerId, e.clientX)
       const r = c.getBoundingClientRect()
+      this.ptr = { x: e.clientX - r.left, y: e.clientY - r.top }
+      if (this.lampHold) {
+        // just arrived: the lamp stays at the door until your hand has really moved
+        if (Math.hypot(this.ptr.x - this.lampHold.x, this.ptr.y - this.lampHold.y) < 50) return
+        this.lampHold = null
+      }
       this.lamp.tx = e.clientX - r.left
       this.lamp.ty = e.clientY - r.top
       if (!this.lamp.moved) {
@@ -301,10 +388,17 @@ export class World {
       if (this.enc.id !== 'seed' && this.enc.id !== 'vigil' && this.enc.id !== 'wanderer' && Math.hypot(this.lamp.x - e.x, this.lamp.y - e.y) > e.r * e.scale * 3.4 + 120) this.leave()
       return
     }
+    // a door under the lamp
+    for (const d of doorsOf(this)) {
+      if (Math.hypot(this.lamp.x - d.x, this.lamp.y - d.y) < Math.min(this.w, this.h) * 0.2) {
+        travel(this, d.dir)
+        return
+      }
+    }
     // nearest thing within reach of the lamp
     let best: Ent | null = null
     let bd = Infinity
-    for (const e of this.ents) {
+    for (const e of this.present) {
       if (e.appear < 0.6) continue
       const d = Math.hypot(this.lamp.x - e.x, this.lamp.y - e.y)
       const reach = e.r * e.scale * 1.7 + 38
@@ -319,6 +413,12 @@ export class World {
   /** From the accessible controls. */
   touchEntity(id: EntityId) {
     const e = this.byId[id]
+    if (e.place !== this.place) {
+      // it is elsewhere: take the door that leads toward it
+      const dir = dirToward(this.place, e.place) ?? dirToward(this.place, 'hall')
+      if (dir) travel(this, dir)
+      return
+    }
     this.lamp.tx = this.lamp.x = e.x
     this.lamp.ty = this.lamp.y = e.y + e.r * 0.2
     this.lamp.moved = true
@@ -327,7 +427,7 @@ export class World {
 
   focusEntity(id: EntityId | null) {
     this.focus = id
-    if (id) {
+    if (id && this.byId[id].place === this.place) {
       const e = this.byId[id]
       this.lamp.tx = e.x
       this.lamp.ty = e.y + e.r * 0.4
@@ -336,21 +436,26 @@ export class World {
     }
   }
 
-  private escape() {
+  escape() {
+    if (this.ride) {
+      this.ride = null
+      if (this.enc) this.leave()
+      return
+    }
     if (this.phase === 'reveal') this.cancelReveal()
     else if (this.enc) this.leave()
   }
 
   // ───────────────────────────── encounters ─────────────────────────────
-  private rankOf(e: Ent): number {
+  rankOf(e: Ent): number {
     // The first choice of a visit has no "obvious next step", so it counts for nothing either way.
     if (!this.lastTouch) return 1
     const from = this.lastTouch
     const d = (a: Ent) => Math.hypot(a.x - from.x, a.y - from.y)
-    return this.ents.filter((o) => o !== e && o.appear > 0.5 && d(o) < d(e)).length
+    return this.present.filter((o) => o !== e && o.appear > 0.5 && d(o) < d(e)).length
   }
 
-  private touch(e: Ent, via: 'pointer' | 'key') {
+  touch(e: Ent, via: 'pointer' | 'key') {
     const m = this.brain.profile.entities[e.id]
     if (m.gone) return
     if (this.asleep) {
@@ -374,6 +479,7 @@ export class World {
       this.whisperAt(e, say('stranger', m, 'slip'))
       return
     }
+    if (m.touches === 0) this.diary(`you met ${e.def.name}.`)
     this.obs({ t: 'touch', id: e.id, rank, via })
     this.lastTouch = { x: e.x, y: e.y }
     e.pop = 0.28
@@ -386,19 +492,22 @@ export class World {
     this.enc = { id: e.id, t: 0, p: 0, data: {}, leaving: false, done: false, leaveAt: 0 }
     if (e.id === 'witness') this.enc.data.replay = this.lamp.history.slice()
     if (e.id === 'mirror') this.enc.data.len = 0
+    startMode(this, this.enc, e)
     this.whisperAt(e, e.id === 'seed' && mem.neglect >= 3 && mem.growth < 0.1 ? husk : say(e.id, mem, 'touch'), 0.4)
     if (mem.touches <= 1) this.say(DEF[e.id].name, e.x - e.r * e.scale * 0.6, e.y + e.r * e.scale * 2.4, { t0: this.t + 0.6, dur: 4, size: 24, tint: DEF[e.id].hue })
   }
 
-  private leave() {
+  leave() {
     if (!this.enc) return
+    this.ride = null
+    this.sound.holdStop()
     this.endVigil()
     this.enc.leaving = true
     this.enc.leaveAt = this.t
   }
 
   /** Report what was carried, whether or not it was carried to the end. */
-  private endVigil() {
+  endVigil() {
     const enc = this.enc
     if (!enc || enc.id !== 'vigil' || enc.data.reported) return
     enc.data.reported = true
@@ -407,7 +516,7 @@ export class World {
     this.sound.setTension(0)
   }
 
-  private updateEnc(dt: number) {
+  updateEnc(dt: number) {
     const enc = this.enc
     if (!enc) {
       this.dim = lerp(this.dim, 0, 1 - Math.exp(-dt * 1.5))
@@ -422,7 +531,8 @@ export class World {
     const len = ENC_LEN[enc.id]
     const d = enc.data as Record<string, number>
     if (!enc.leaving && !enc.done) {
-      switch (enc.id) {
+      const handled = updateMode(this, enc, e, dt)
+      if (!handled) switch (enc.id) {
         case 'listener':
           d.still = L.speed < 45 ? (d.still ?? 0) + dt : Math.max(0, (d.still ?? 0) - dt * 2)
           enc.p = d.still / len
@@ -441,6 +551,7 @@ export class World {
           let got = read
           const seen = (enc.data.seen as Record<number, boolean>) ?? (enc.data.seen = {})
           marks.forEach((m, i) => {
+            if ((m.place ?? 'hall') !== this.place) return
             if (!seen[i] && Math.hypot(m.x * this.w - L.x, m.y * this.h - L.y) < 46) {
               seen[i] = true
               got++
@@ -508,7 +619,10 @@ export class World {
         enc.done = true
         enc.leaveAt = this.t + 3
         this.endVigil()
+        this.ride = null
         this.obs({ t: 'complete', id: enc.id })
+        this.diary(`you stayed with ${e.def.name}.`)
+        if (this.brain.profile.entities[enc.id].completions === 2 && !this.brain.profile.gifts.some((g) => g.from === enc.id)) this.giftQueue.push({ id: enc.id, at: this.t + 6 })
         this.sound.chime(enc.id)
         if (this.brain.session.touched.length < 3) this.nudge('others', 'there are others.', this.w * 0.5 - 90, this.h * 0.14, 14)
         const prof = this.brain.profile
@@ -530,7 +644,7 @@ export class World {
   }
 
   // ───────────────────────────── observations & voice ─────────────────────────────
-  private obs(o: Obs) {
+  obs(o: Obs) {
     const events = this.brain.observe(o)
     // let the person see that it was noticed: a mote of light travels into the floor
     if (o.t === 'dwell' || o.t === 'touch' || o.t === 'mark' || o.t === 'complete' || o.t === 'chase' || o.t === 'probe') {
@@ -540,6 +654,8 @@ export class World {
     if (o.t === 'complete') this.maybeMisread('complete', o.id)
     if (o.t === 'mark') this.maybeMisread('mark', null)
     for (const ev of events) {
+      if (ev.type === 'gone') this.diary('the stranger left, and will not come back.')
+      if (ev.type === 'revised') this.diary(`I was wrong about you: ${doubt(ev.hyp).replace(/^I thought /, 'I thought ')}`)
       if (ev.type === 'gone') {
         const e = this.byId[ev.id]
         this.whisperAt(e, goneLine, 0.3)
@@ -579,7 +695,7 @@ export class World {
     window.setTimeout(() => this.hooks.whisper?.(text), Math.max(0, (w.t0 - this.t) * 1000))
   }
 
-  private whisperAt(e: Ent, text: string, delay = 0) {
+  whisperAt(e: Ent, text: string, delay = 0) {
     const size = 22
     const approx = text.length * size * 0.42
     const x = clamp(e.x - approx / 2, 16, this.w - approx - 16)
@@ -588,7 +704,7 @@ export class World {
   }
 
   /** Yadah says why you did something. It is sure. It cannot actually know. */
-  private maybeMisread(trigger: 'leave' | 'complete' | 'mark', id: EntityId | null) {
+  maybeMisread(trigger: 'leave' | 'complete' | 'mark', id: EntityId | null) {
     if (this.asleep || this.phase !== 'world' || this.t < 25 || this.t - this.lastMisread < 60 || this.visitMisreads >= 4) return
     if (this.rand() > 0.7) return
     const kind = misreadFor(trigger, id)
@@ -598,6 +714,7 @@ export class World {
     this.visitMisreads++
     const text = def.line(id)
     this.brain.observe({ t: 'misread', misread: { kind, entity: id, text, claim: def.claim(id), at: Date.now() } })
+    this.diary(`I said “${text}” I don’t know if it was true.`)
     const index = this.brain.profile.misreads.length - 1
     const e = id ? this.byId[id] : null
     if (e) this.whisperAt(e, text, 1.2)
@@ -605,7 +722,7 @@ export class World {
     if (def.correction) this.pending.push({ index, kind, entity: id, t0: this.t })
   }
 
-  private checkCorrections() {
+  checkCorrections() {
     const L = this.lamp
     this.pending = this.pending.filter((p) => {
       const c = MISREADS[p.kind].correction!
@@ -626,13 +743,13 @@ export class World {
   }
 
   /** A hint, said once, in Yadah's voice, only while it still matters. */
-  private nudge(key: string, text: string, x: number, y: number, delay = 0) {
+  nudge(key: string, text: string, x: number, y: number, delay = 0) {
     if (this.hinted.has(key)) return
     this.hinted.add(key)
     this.say(text, clamp(x, 20, this.w - text.length * 11 - 20), clamp(y, 40, this.h - 30), { t0: this.t + delay, dur: 5, size: 22 })
   }
 
-  private hintFor(e: Ent) {
+  hintFor(e: Ent) {
     const m = this.brain.profile.entities[e.id]
     if (m.touches > 0) return
     const t = this.t
@@ -680,9 +797,10 @@ export class World {
   }
 
   /** The ending and the farewell have no choice to make: they end, and the room carries on. */
-  private finishScript() {
+  finishScript() {
     if (this.script === 'ending') {
       this.brain.observe({ t: 'end' })
+      this.diary('it ended, or something did.')
       this.phase = 'world'
       this.hooks.phase?.('world')
       this.sound.release()
@@ -733,7 +851,7 @@ export class World {
   }
 
   // ───────────────────────────── frame ─────────────────────────────
-  private tick = (now: number) => {
+  tick = (now: number) => {
     this.raf = requestAnimationFrame(this.tick)
     const dt = Math.min(0.05, (now - this.last) / 1000)
     this.last = now
@@ -750,7 +868,7 @@ export class World {
     return 0
   }
 
-  private update(dt: number) {
+  update(dt: number) {
     const L = this.lamp
     const intent = this.brain.intent()
 
@@ -767,6 +885,7 @@ export class World {
     // near the vigil the lamp grows heavy, before you have touched anything
     const vg = this.byId.vigil
     const heavy = vg && vg.appear > 0.5 && !this.enc ? clamp(1 - Math.hypot(L.x - vg.x, L.y - vg.y) / (vg.r * 3.6)) : 0
+    controlLamp(this)
     const lk = (1 - Math.exp(-dt * 14)) * (1 - 0.6 * heavy)
     const ox = L.x
     const oy = L.y
@@ -791,7 +910,15 @@ export class World {
     }
 
     // entities
-    this.ents.forEach((e, n) => this.updateEnt(e, n, dt, intent))
+    updateHouse(this, dt)
+    if (this.announced !== this.place) {
+      this.announced = this.place
+      this.hooks.place?.(this.place)
+    }
+    updateEvents(this, dt)
+    this.ents.forEach((e, n) => {
+      if (e.place === this.place) this.updateEnt(e, n, dt, intent)
+    })
     this.separate()
     this.track(dt)
     this.probes(dt)
@@ -805,7 +932,7 @@ export class World {
     // specks: motes of memory flying to where they will be kept
     for (const s of this.specks) {
       const p = clamp((this.t - s.t0) / 1.6)
-      const tgt = s.to === 'word' ? this.letters[s.letter] ?? { x: this.w * 0.5, y: this.h * 0.5 } : this.byId[s.to]
+      const tgt = s.to === 'word' ? (this.place === 'hall' ? this.letters[s.letter] : (() => { const [dx, dy] = doorPoint(this, dirToward(this.place, 'hall') ?? 'down'); return { x: dx, y: dy } })()) ?? { x: this.w * 0.5, y: this.h * 0.5 } : this.byId[s.to]
       s.x = lerp(s.x, tgt.x, 0.02 + p * p * 0.2)
       s.y = lerp(s.y, tgt.y, 0.02 + p * p * 0.2)
       if (p >= 1 && s.to === 'word') this.letterPulse[s.letter] = 1
@@ -836,7 +963,7 @@ export class World {
   }
 
   /** Yadah keeps hours. At night it is half asleep; in the small hours, asleep. You can wake it. */
-  private hours(dt: number) {
+  hours(dt: number) {
     const target = this.brain.night()
     this.night = lerp(this.night, target, 1 - Math.exp(-dt * 0.4))
     const was = this.asleep
@@ -861,6 +988,7 @@ export class World {
     const L = this.lamp
     if (this.phase === 'world' && L.moved && L.speed < 70) {
       this.brain.profile.marks.forEach((m, i) => {
+        if ((m.place ?? 'hall') !== this.place) return
         if (Math.hypot(m.x * this.w - L.x, m.y * this.h - L.y) < 50) {
           this.renewAcc[i] = (this.renewAcc[i] ?? 0) + dt
           if (this.renewAcc[i] > 1.2) {
@@ -877,7 +1005,7 @@ export class World {
   }
 
   /** The small constant signs of life: dust, waking, and being learned. */
-  private alive(dt: number) {
+  alive(dt: number) {
     const L = this.lamp
     const p = this.brain.profile
     this.ignite = Math.min(1, this.ignite + dt / 3.2)
@@ -890,9 +1018,10 @@ export class World {
     const prox = {} as Record<EntityId, number>
     const bond = {} as Record<EntityId, number>
     for (const e of this.ents) {
-      prox[e.id] = e.prox
+      const here = e.place === this.place
+      prox[e.id] = here ? e.prox : 0
       bond[e.id] = p.entities[e.id].bond
-      if (!this.asleep) this.hintFor(e)
+      if (here && !this.asleep) this.hintFor(e)
     }
     this.sound.update(prox, bond, L.speed, this.hush, this.asleep ? 1 : this.night * 0.5)
 
@@ -900,8 +1029,8 @@ export class World {
     const mo = this.motion * this.atm.pace
     for (const m of this.motes) {
       const a = Math.sin(m.x * 0.004 + this.t * 0.07) * 2 + Math.cos(m.y * 0.005 - this.t * 0.06) * 2 + m.ph
-      m.x += Math.cos(a) * 9 * m.z * mo * dt
-      m.y += (Math.sin(a) * 6 - 3 * m.z) * mo * dt
+      m.x += (Math.cos(a) * 9 + this.gust * this.gustDir * 160) * m.z * mo * dt
+      m.y += (Math.sin(a) * 6 - 3 * m.z + this.gust * 30) * mo * dt
       const dx = m.x - L.x
       const dy = m.y - L.y
       const d2 = dx * dx + dy * dy
@@ -916,6 +1045,35 @@ export class World {
       if (m.y > this.h + 10) m.y = -10
     }
 
+    // where the lamp has been, so the mirror can show it to you next time
+    if (L.moved && this.t - this.pathAt > 0.5 && this.phase === 'world') {
+      this.pathAt = this.t
+      this.pathBuf.push(Math.round((L.x / this.w) * 1000) / 1000, Math.round((L.y / this.h) * 1000) / 1000)
+      if (this.pathBuf.length > 240) this.pathBuf.splice(0, 2)
+    }
+    if (this.t - this.lastPathSent > 12 && this.pathBuf.length > 8) {
+      this.lastPathSent = this.t
+      this.brain.observe({ t: 'path', pts: [...this.pathBuf] })
+    }
+    // a gift you pass close to says what it is, once in a while
+    if (this.place === 'hall' && L.stillFor > 1.2 && this.phase === 'world') {
+      const gl = this.brain.profile.gifts
+      gl.forEach((g, i) => {
+        const [gx, gy] = giftPos(this, i, gl.length)
+        if (Math.hypot(L.x - gx, L.y - gy) < 55 && this.t - (this.giftTold[g.from] ?? -99) > 25) {
+          this.giftTold[g.from] = this.t
+          this.say(`${GIFTS[g.from].name}. ${GIFTS[g.from].line}`, clamp(gx - 120, 20, this.w - 440), clamp(gy - 50, 40, this.h - 30), { dur: 6, size: 21 })
+          this.sound.play([110, 164.81, 220, 261.63][i % 4] * 2, 0.05, 1.8)
+        }
+      })
+    }
+    // gifts that are owed, once nothing else is happening
+    if (this.giftQueue.length && !this.enc && this.phase === 'world' && this.t > this.giftQueue[0].at) {
+      const g = this.giftQueue.shift()!
+      if (this.byId[g.id].place === this.place) this.giveGift(g.id)
+      else this.giftQueue.push({ id: g.id, at: this.t + 20 })
+    }
+
     // someone who hasn't moved the light yet needs to be told it can be moved
     if (!L.moved && this.t > 7 && !this.idleHinted && this.phase === 'world' && ENTITIES.every((d) => p.entities[d.id].touches === 0)) {
       this.idleHinted = true
@@ -923,7 +1081,7 @@ export class World {
     }
   }
 
-  private updateEnt(e: Ent, n: number, dt: number, intent: ReturnType<Brain['intent']>) {
+  updateEnt(e: Ent, n: number, dt: number, intent: ReturnType<Brain['intent']>) {
     const L = this.lamp
     const it = intent.entities[e.id]
     const m = this.brain.profile.entities[e.id]
@@ -952,6 +1110,12 @@ export class World {
     const hk = this.phase === 'release' && this.releaseT < delay ? 0 : 1 - Math.exp(-dt * (this.phase === 'release' ? 0.9 : 0.5))
     let thx = it.home[0] * this.w
     let thy = it.home[1] * this.h
+    if (e.place !== it.place) {
+      // a visitor: it stands somewhere in a place that is not its own
+      if (!e.visit) e.visit = { x: this.w * (0.25 + this.rand() * 0.5), y: this.h * (0.3 + this.rand() * 0.45) }
+      thx = e.visit.x
+      thy = e.visit.y
+    }
     // an ignored thing slowly turns away
     if (!m.touchedThisVisit && m.bond < 0.3 && this.t > 40) e.drift = Math.min(1, e.drift + dt / 160)
     else e.drift = Math.max(0, e.drift - dt / 25)
@@ -997,7 +1161,13 @@ export class World {
       case 'wanderer': {
         damp = 0.9
         k = 0.7
-        if (e.tempt && !e.tempt.done) {
+        if (this.tug && this.tug.by === 'wanderer') {
+          // it has your light, and somewhere in mind to take it
+          const door = this.tug.door ? doorPoint(this, this.tug.door) : null
+          tx = door ? door[0] : this.w * (0.5 + 0.35 * Math.sin(this.t * 0.9))
+          ty = door ? door[1] : this.h * (0.45 + 0.25 * Math.cos(this.t * 0.7))
+          k = 1.9
+        } else if (e.tempt && !e.tempt.done) {
           const a = this.t * 0.8
           tx = L.x + Math.cos(a) * 190
           ty = L.y + Math.sin(a) * 140
@@ -1016,7 +1186,7 @@ export class World {
           ty = e.ty
         }
         const sp = Math.hypot(e.vx, e.vy)
-        const maxv = 110 * mo
+        const maxv = (this.tug ? 190 : 110) * mo
         if (sp > maxv) {
           e.vx *= maxv / sp
           e.vy *= maxv / sp
@@ -1120,6 +1290,19 @@ export class World {
         break
     }
 
+    if (e.leaving) {
+      // walking out through a door
+      const [dx, dy] = doorPoint(this, e.leaving.dir)
+      tx = dx
+      ty = dy
+      k = 2.4
+      if (Math.hypot(e.x - dx, e.y - dy) < 70) {
+        const to = e.leaving.to
+        e.leaving = null
+        relocate(this, e, to)
+        return
+      }
+    }
     if (e.appear < 1) {
       // arriving
       k *= 0.6
@@ -1137,11 +1320,11 @@ export class World {
     while (e.trail.length && this.t - e.trail[0].t > (inEnc ? 14 : 7)) e.trail.shift()
   }
 
-  private separate() {
-    for (let i = 0; i < this.ents.length; i++) {
-      for (let j = i + 1; j < this.ents.length; j++) {
-        const a = this.ents[i]
-        const b = this.ents[j]
+  separate() {
+    for (let i = 0; i < this.present.length; i++) {
+      for (let j = i + 1; j < this.present.length; j++) {
+        const a = this.present[i]
+        const b = this.present[j]
         if (a.appear < 0.1 || b.appear < 0.1) continue
         const dx = b.x - a.x
         const dy = b.y - a.y
@@ -1159,10 +1342,10 @@ export class World {
   }
 
   // ───────────────────────────── watching the lamp ─────────────────────────────
-  private track(dt: number) {
+  track(dt: number) {
     const L = this.lamp
     if (this.phase !== 'world' || this.asleep) return
-    for (const e of this.ents) {
+    for (const e of this.present) {
       if (e.appear < 0.05) continue
       const d = Math.hypot(L.x - e.x, L.y - e.y)
       const near = e.appear > 0.8 && L.moved && d < e.r * e.scale * 2.2 + 70 && !this.enc
@@ -1198,7 +1381,7 @@ export class World {
     }
   }
 
-  private flushDwell(e: Ent) {
+  flushDwell(e: Ent) {
     const n = e.near
     if (n.acc <= 0) return
     this.obs({ t: 'dwell', id: e.id, ms: n.acc * 1000, still: n.still / n.acc })
@@ -1206,7 +1389,7 @@ export class World {
     n.still = 0
   }
 
-  private marking(dt: number) {
+  marking(dt: number) {
     const L = this.lamp
     if (this.phase !== 'world' || this.enc || !L.moved) {
       this.markAcc = 0
@@ -1217,21 +1400,21 @@ export class World {
     if (this.markAcc > 1.6) {
       let near: EntityId | null = null
       let bd = 230
-      for (const e of this.ents) {
+      for (const e of this.present) {
         const d = Math.hypot(e.x - L.x, e.y - L.y)
         if (d < bd) {
           bd = d
           near = e.id
         }
       }
-      this.obs({ t: 'mark', mark: { x: L.x / this.w, y: L.y / this.h, w: clamp(this.markAcc / 6, 0.2, 1), e: near } })
+      this.obs({ t: 'mark', mark: { x: L.x / this.w, y: L.y / this.h, w: clamp(this.markAcc / 6, 0.2, 1), e: near, place: this.place } })
       this.specks.push({ x: L.x, y: L.y, to: 'archivist', letter: 0, t0: this.t })
       this.markAcc = -3
     }
   }
 
   // ───────────────────────────── yadah tests a guess ─────────────────────────────
-  private probes(dt: number) {
+  probes(dt: number) {
     for (const e of this.ents) {
       const tp = e.tempt
       if (!tp || tp.done) continue
@@ -1260,11 +1443,12 @@ export class World {
     }
     if (!pick) return
     const e = this.byId[HYP[pick].probe!.entity]
+    if (e.place !== this.place) return
     this.lastProbe = this.t
     e.tempt = { hyp: pick, start: this.t, until: this.t + 13, engaged: 0, done: false }
   }
 
-  private updateBeacon(dt: number) {
+  updateBeacon(dt: number) {
     const ready = (this.brain.ready() || this.brain.endingReady()) && this.phase === 'world' && this.t > this.beaconCooldown && !this.enc && !this.asleep
     this.beacon.on = ready
     this.beacon.vis = lerp(this.beacon.vis, ready ? 1 : 0, 1 - Math.exp(-dt * 0.9))
@@ -1281,5 +1465,5 @@ export class World {
       }
     }
   }
-  private beaconWas = false
+  beaconWas = false
 }

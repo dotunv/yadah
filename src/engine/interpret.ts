@@ -41,6 +41,9 @@ export function step(prev: Profile, sess: Session, o: Obs, now = Date.now()): St
     revisions: prev.revisions,
     misreads: prev.misreads ?? [],
     chapters: prev.chapters ?? [],
+    gifts: prev.gifts ?? [],
+    diary: prev.diary ?? [],
+    discovered: prev.discovered ?? [],
   }
   let session = sess
   let goneNow = false
@@ -112,6 +115,18 @@ export function step(prev: Profile, sess: Session, o: Obs, now = Date.now()): St
         marks[o.index] = { ...marks[o.index], life: Math.min(1, (marks[o.index].life ?? 1) + 0.5), dead: false, visit: p.visits }
         p.marks = marks
       }
+      break
+    case 'gift':
+      p.gifts = [...p.gifts, { from: o.from, visit: p.visits }]
+      break
+    case 'diary':
+      p.diary = [...p.diary.slice(-39), { visit: p.visits, text: o.text }]
+      break
+    case 'discover':
+      if (!p.discovered.includes(o.place)) p.discovered = [...p.discovered, o.place]
+      break
+    case 'path':
+      p.path = o.pts
       break
     case 'chapter':
       if (!p.chapters.includes(o.chapter)) p.chapters = [...p.chapters, o.chapter]
