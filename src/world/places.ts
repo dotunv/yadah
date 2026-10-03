@@ -1,6 +1,6 @@
 import { drawDesk, drawDeskLife } from './desk'
-import { PLACES, isFar } from '../engine/places'
-import { FAR_GROUND, drawFarLife, drawFarProps, drawLearnedShelf, pondOf } from './far'
+import { PLACES } from '../engine/places'
+import { pondOf } from './pond'
 import { doorsOf } from './house'
 import { clamp, ease, rngOf } from './scene'
 import type { World } from './World'
@@ -15,16 +15,11 @@ const angleLerp = (a: number, b: number, t: number) => (a + ((((b - a) % 360) + 
 
 /** The colour of the floor here: the air you have made, tinted by the place. */
 export function ground(w: World) {
-  if (isFar(w.place)) {
-    const g = FAR_GROUND[w.place]
-    return { hue: g.h, chroma: g.c + w.atm.chroma * 0.15, l: g.l }
-  }
   const hall = w.place === 'hall'
-  const near = w.place as 'hall' | 'archive' | 'garden' | 'shore'
   return {
-    hue: hall ? w.atm.hue : near === 'archive' ? angleLerp(w.atm.hue, 52, 0.8) : angleLerp(w.atm.hue, PLACES[near].hue, 0.62),
-    chroma: { hall: 0.04, archive: 0.05, garden: 0.1, shore: 0.08 }[near] + w.atm.chroma * 0.6,
-    l: { hall: 0.58, archive: 0.5, garden: 0.46, shore: 0.5 }[near],
+    hue: hall ? w.atm.hue : w.place === 'archive' ? angleLerp(w.atm.hue, 52, 0.8) : angleLerp(w.atm.hue, PLACES[w.place].hue, 0.62),
+    chroma: { hall: 0.04, archive: 0.05, garden: 0.1, shore: 0.08 }[w.place] + w.atm.chroma * 0.6,
+    l: { hall: 0.58, archive: 0.5, garden: 0.46, shore: 0.5 }[w.place],
   }
 }
 
@@ -32,7 +27,6 @@ export function ground(w: World) {
 
 export function drawProps(w: World, ctx: CanvasRenderingContext2D) {
   const g = ground(w)
-  if (isFar(w.place)) return drawFarProps(w, ctx, w.place)
   switch (w.place) {
     case 'hall':
       hearth(w, ctx)
@@ -90,7 +84,7 @@ function archive(w: World, ctx: CanvasRenderingContext2D, hue: number) {
   ctx.restore()
   // the shelves along the back wall
   ctx.fillStyle = col(0.26, 0.06, hue)
-  ctx.fillRect(0, 0, W, H * 0.31)
+  ctx.fillRect(0, 0, W, H * 0.2)
   for (let row = 0; row < 2; row++) {
     const y = row * H * 0.1 + H * 0.012
     ctx.fillStyle = col(0.11, 0.01, hue)
@@ -104,10 +98,6 @@ function archive(w: World, ctx: CanvasRenderingContext2D, hue: number) {
       x += bw + 1
     }
   }
-  // the third shelf is yours: a book for everything you have been told
-  ctx.fillStyle = col(0.11, 0.01, hue)
-  ctx.fillRect(0, H * 0.3, W, 4)
-  drawLearnedShelf(w, ctx)
   // a long table and what is left on it
   const tx = W * 0.5
   const ty = H * 0.62
@@ -271,7 +261,6 @@ function shore(w: World, ctx: CanvasRenderingContext2D, hue: number) {
 
 export function drawLife(w: World, ctx: CanvasRenderingContext2D) {
   const { w: W, h: H } = w
-  if (isFar(w.place)) return drawFarLife(w, ctx, w.place)
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   if (w.place === 'hall') {

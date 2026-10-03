@@ -97,8 +97,6 @@ Each presence has a second way of meeting you, offered only after you have finis
 - **The pond.** In the garden, rest the lamp on the pond and the water rises over the room and shows you a real website, picked at random from a short list I chose and checked (Radio Garden, Neal.fun, The Evolution of Trust, Pointer Pointer, WindowSwap, Zoomquilt, Earth, Poolside FM, NASA Eyes, The Useless Web). "Step through" opens it in a new tab; "stay here" lets the water go. Sites you have not been to come up more often. The list is `src/engine/sites.ts`.
 - **The desk.** In the hall, rest the lamp on the table to open the board. It is shared between whoever is at the desk at the same time, with no server of ours and no database: your browser joins a small room over WebRTC (found through public Nostr relays, which only introduce peers and store nothing), and notes pass straight between browsers and are merged by id. Each browser keeps its own copy for 30 days, so notes survive as long as people who saw them come back. Nothing connects until you open the desk. Notes are 140 characters, rate-limited, shown as plain text, and you can hide any note for yourself. Add `?relay=wss://your-relay` to use a relay of your own.
 
-The seven "far places" of facts still exist in the code (`src/engine/knowledge.ts`, `src/world/far.ts`) but the pond no longer leads to them.
-
 ## Eight presences
 
 They are not UI. They have behavior, and Yadah learns which ones you form relationships with.

@@ -1,8 +1,7 @@
 import { DEF } from '../engine/entities'
-import { FAR, type FarId } from '../engine/knowledge'
-import { OPPOSITE, PLACES, isFar, unlocked, type Dir, type PlaceId } from '../engine/places'
+import { OPPOSITE, PLACES, unlocked, type Dir, type PlaceId } from '../engine/places'
 import { SITES } from '../engine/sites'
-import { pondOf } from './far'
+import { pondOf } from './pond'
 import { deskOf } from './desk'
 import { stageOf } from '../engine/places'
 import type { EntityId } from '../engine/types'
@@ -65,7 +64,7 @@ export function travel(w: World, dir: Dir) {
   const to = PLACES[w.place].doors[dir]
   if (!to || !unlocked(w.brain.profile).includes(to)) return
   if (w.enc && !w.ride) w.enc.leaving = true
-  w.transition = { t: 0, to, dir, swapped: false, via: undefined }
+  w.transition = { t: 0, to, dir, swapped: false }
   w.sound.whoosh()
 }
 
@@ -80,22 +79,14 @@ export function inPond(w: World, x: number, y: number) {
   return ((x - p.x) / p.rx) ** 2 + ((y - p.y) / p.ry) ** 2 < 1
 }
 
-/** Into the water, and out somewhere else: any of the seven far places, favouring ones you have not seen. */
-export function dive(w: World, to?: FarId) {
+/** Into the water: it opens onto a real website, favouring ones you have not been to. */
+export function dive(w: World) {
   if (w.transition || w.phase !== 'world' || w.asleep || w.enc || w.portal) return
-  if (!to) {
-    // the pond opens onto a real website, favouring ones you have not been to
-    const seen = (id: string) => w.brain.profile.chapters.includes(`site:${id}`)
-    const pool = SITES.filter((s) => s.id !== w.lastSite).flatMap((s) => (seen(s.id) ? [s] : [s, s, s]))
-    const site = pool[Math.floor(w.rand() * pool.length)]
-    w.lastSite = site.id
-    w.portal = { site, t: 0, told: false }
-    w.sound.whoosh()
-    w.sound.pluck('listener', 3, 0.06)
-    return
-  }
-  w.lastFar = to
-  w.transition = { t: 0, to, dir: 'up', swapped: false, via: 'pond' }
+  const seen = (id: string) => w.brain.profile.chapters.includes(`site:${id}`)
+  const pool = SITES.filter((s) => s.id !== w.lastSite).flatMap((s) => (seen(s.id) ? [s] : [s, s, s]))
+  const site = pool[Math.floor(w.rand() * pool.length)]
+  w.lastSite = site.id
+  w.portal = { site, t: 0, told: false }
   w.sound.whoosh()
   w.sound.pluck('listener', 3, 0.06)
 }
@@ -143,7 +134,7 @@ export function updateHouse(w: World, dt: number) {
   const tr = w.transition
   if (tr) {
     tr.t += dt
-    w.curtainWater = tr.via === 'pond'
+    w.curtainWater = false
     w.curtain = tr.t < 0.55 ? ease(tr.t / 0.55) : tr.t < 0.65 ? 1 : 1 - ease(clamp((tr.t - 0.65) / 0.8))
     if (tr.t >= 0.55 && !tr.swapped) {
       tr.swapped = true
@@ -273,7 +264,7 @@ function swap(w: World, to: PlaceId, dir: Dir) {
   const from = w.place
   // whoever is close to you and in the room will come after you (but not into the water)
   for (const e of w.ents) {
-    if (isFar(to) || isFar(from) || e.place !== from || !MOBILE.has(e.id)) continue
+    if (e.place !== from || !MOBILE.has(e.id)) continue
     const m = prof.entities[e.id]
     if (!m.gone && m.bond >= 0.4 && stageOf(prof, e.id) >= 1 && !e.leaving) w.arrivals.push({ id: e.id, at: w.t + 2.2 + w.rand() * 4 })
   }
@@ -283,15 +274,7 @@ function swap(w: World, to: PlaceId, dir: Dir) {
   w.specks = []
   w.whispers = w.whispers.filter((s) => s.t0 > w.t - 0.1 && s.dur > 12)
   const arrive = OPPOSITE[dir]
-  let [ix, iy] = insideDoor(w, arrive)
-  if (isFar(to)) {
-    ix = w.w * 0.5
-    iy = w.h * 0.46
-  } else if (to === 'garden' && isFar(from)) {
-    const p = pondOf(w)
-    ix = p.x
-    iy = p.y - p.ry - 56
-  }
+  const [ix, iy] = insideDoor(w, arrive)
   w.lamp.x = w.lamp.tx = ix
   w.lamp.y = w.lamp.ty = iy
   w.lamp.vx = w.lamp.vy = 0
@@ -310,16 +293,12 @@ function swap(w: World, to: PlaceId, dir: Dir) {
     }
   }
   const first = !prof.chapters.includes(`place:${to}`)
-  if (isFar(to) && !prof.chapters.includes('wonder')) {
-    w.brain.observe({ t: 'chapter', chapter: 'wonder' })
-    w.titles.push({ text: 'wonder', roman: 'VII', t0: w.t + 0.6, dur: 6 })
-  }
   w.brain.observe({ t: 'travel', to, first })
   if (first) {
     w.brain.observe({ t: 'chapter', chapter: `place:${to}` })
-    w.titles.push({ text: isFar(to) ? FAR[to].name : PLACES[to].name.replace('the ', ''), roman: '', t0: w.t + (isFar(to) ? 3.2 : 1.2), dur: 5 })
-    w.say(PLACES[to].epigraph, w.w * 0.09, w.h * 0.36, { t0: w.t + (isFar(to) ? 4.4 : 2.4), dur: 7, size: 30 })
-    w.diary(isFar(to) ? `you went through the pond, to ${FAR[to].name}.` : `you went to ${PLACES[to].name} for the first time.`)
+    w.titles.push({ text: PLACES[to].name.replace('the ', ''), roman: '', t0: w.t + 1.2, dur: 5 })
+    w.say(PLACES[to].epigraph, w.w * 0.09, w.h * 0.36, { t0: w.t + 2.4, dur: 7, size: 30 })
+    w.diary(`you went to ${PLACES[to].name} for the first time.`)
   }
   w.sound.setPlace(to)
 }

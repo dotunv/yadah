@@ -9,11 +9,7 @@ import type { EntityId, HypId, Obs } from '../engine/types'
 import { giftPos, render } from './draw'
 import type { Dir, PlaceId } from '../engine/places'
 import { startMode, updateMode } from './depth'
-import { updateKnowledge, type Card, type Quiz } from './know'
 import { controlLamp, fire, updateEvents, type Ghost } from './events'
-import { factsOf, type FarId } from '../engine/knowledge'
-import { isFar } from '../engine/places'
-import { factPos } from './far'
 import type { Site } from '../engine/sites'
 import { dirToward, dive, doorPoint, doorsOf, inPond, presentOf, relocate, travel, updateHouse } from './house'
 import { Sound } from './sound'
@@ -63,7 +59,7 @@ export class World {
   titles: Title[] = []
   /** The house */
   place: PlaceId = 'hall'
-  transition: null | { t: number; to: PlaceId; dir: Dir; swapped: boolean; via?: 'pond' } = null
+  transition: null | { t: number; to: PlaceId; dir: Dir; swapped: boolean } = null
   /** 0..1 — the dark between two places. */
   curtain = 0
   /** Going through water is a flash of light, not a fade to dark. */
@@ -94,20 +90,11 @@ export class World {
   doorFlash: Record<string, number> = {}
   nextEventAt = 30
   /** What you have just been told, and Yadah's question about what you kept. */
-  card: Card | null = null
-  quiz: Quiz | null = null
-  factAcc: Record<string, number> = {}
-  factCool: Record<string, number> = {}
-  souvenirTold: Record<string, number> = {}
   pondDwell = 0
   portal: { site: Site; t: number; told: boolean } | null = null
   lastSite: string | null = null
   deskDwell = 0
   deskOpen = false
-  lastQuiz = -99
-  lastFar: string | null = null
-  /** A brief swell on everything, when something is learned. */
-  pop = 0
   giftQueue: { id: EntityId; at: number }[] = []
   giftTold: Partial<Record<EntityId, number>> = {}
   lastFollow = -99
@@ -212,11 +199,6 @@ export class World {
     e.pop = 0.35
   }
 
-  /** Where the lights of the current far place hang (for the accessible controls and tests). */
-  factSpots(): { id: string; x: number; y: number }[] {
-    return isFar(this.place) ? factsOf(this.place).map((f) => { const [x, y] = factPos(this, f); return { id: f.id, x, y } }) : []
-  }
-
   /** Step back from a website the pond opened. */
   closePortal() {
     this.portal = null
@@ -241,9 +223,9 @@ export class World {
     this.hooks.desk?.(true)
   }
 
-  /** Go through the pond: to a real website, or (with an id) to one far place. */
-  dive(to?: FarId) {
-    dive(this, to)
+  /** Go through the pond, to a real website. */
+  dive() {
+    dive(this)
   }
 
   /** For the accessible controls: take a door. */
@@ -981,7 +963,6 @@ export class World {
       this.hooks.place?.(this.place)
     }
     updateEvents(this, dt)
-    updateKnowledge(this, dt)
     this.ents.forEach((e, n) => {
       if (e.place === this.place) this.updateEnt(e, n, dt, intent)
     })
