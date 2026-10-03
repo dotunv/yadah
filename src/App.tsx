@@ -42,6 +42,7 @@ export default function App() {
       await load()
       await Promise.all([
         document.fonts.load('italic 24px Alegreya'),
+        document.fonts.load('italic 500 24px Alegreya'),
         document.fonts.load('800 100px "Bricolage Grotesque Variable"'),
       ]).catch(() => undefined)
       if (dead || !canvas.current) return

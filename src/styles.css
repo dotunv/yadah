@@ -1,16 +1,89 @@
+/*
+  Yadah — the page around the room.
+
+  Almost everything here is the thin frame: the room itself is drawn on the
+  canvas. So the type here has three jobs, and they are not the same job:
+
+    --voice    Alegreya, the way the room speaks. Italic, always.
+    --display  Bricolage Grotesque, the way the room is *lettered* —
+              the floor wordmark, the titles, the places.
+    --plain    the same grotesque at reading sizes: labels, forms, chrome.
+
+  The old build leaned on the serif for almost all of it, which made the room's
+  voice and the interface's furniture the same texture. Splitting them lets the
+  room keep its handwriting while the furniture recedes.
+
+  Colour is in oklch throughout. `--ground`/`--paper` are the ink and the page;
+  `--lamp` is the light you carry, and it is the only warm thing here. The
+  eight presences each own a hue that bleeds into the room as pigment — those
+  live in engine/entities.ts and are deliberately not repeated here.
+*/
+
 :root {
-  --ground: oklch(0.1 0.006 175);
-  --paper: oklch(0.9 0.012 175);
-  --paper-dim: oklch(0.62 0.012 175);
-  --lamp: oklch(0.88 0.07 78);
-  --hand: 'Alegreya', 'Iowan Old Style', Georgia, serif;
-  --grot: 'Bricolage Grotesque Variable', 'Helvetica Neue', system-ui, sans-serif;
+  /* ── ink and page ───────────────────────────────────────────────────
+     A cool near-black ground against a warm off-white. The small amount of
+     chroma on the paper keeps it from reading as dead grey next to a room
+     that is genuinely coloured. */
+  --ground: oklch(0.13 0.012 250);
+  --ground-deep: oklch(0.09 0.010 250);
+  --paper: oklch(0.93 0.014 85);
+  --paper-dim: oklch(0.72 0.018 250);
+  --paper-faint: oklch(0.58 0.014 250);
+
+  /* the lamp: the one warm source, and the only accent in the frame */
+  --lamp: oklch(0.86 0.13 78);
+  --lamp-deep: oklch(0.62 0.11 62);
+
+  /* ── surfaces ───────────────────────────────────────────────────────
+     The portal and the desk are windows onto somewhere else, so they sit a
+     little cooler and lighter than the room around them. */
+  --surface: oklch(0.22 0.028 245 / 0.95);
+  --surface-edge: oklch(0.72 0.03 235 / 0.16);
+  --surface-ink: oklch(0.95 0.014 235);
+  --surface-dim: oklch(0.74 0.020 240);
+
+  /* ── the three voices ─────────────────────────────────────────────── */
+  --voice: 'Alegreya', 'Iowan Old Style', Georgia, serif;
+  --display: 'Bricolage Grotesque Variable', 'Helvetica Neue', system-ui, sans-serif;
+
+  /* ── the scale ──────────────────────────────────────────────────────
+     One ratio, 1.25, from a 1rem base, fluid between a 22rem and a 90rem
+     viewport so a phone and a wide desk both get a sane measure. Every size
+     in the file is a step, never a literal. */
+  --step--1: clamp(0.78rem, 0.76rem + 0.10vw, 0.84rem);
+  --step-0: clamp(1rem, 0.97rem + 0.15vw, 1.09rem);
+  --step-1: clamp(1.25rem, 1.19rem + 0.30vw, 1.45rem);
+  --step-2: clamp(1.56rem, 1.45rem + 0.55vw, 1.95rem);
+  --step-3: clamp(1.95rem, 1.75rem + 1.00vw, 2.60rem);
+  --step-4: clamp(2.44rem, 2.09rem + 1.75vw, 3.50rem);
+
+  /* optical sizes for the two faces, set where they are actually used */
+  --tracking-display: -0.02em;
+  --tracking-caps: 0.16em;
+
   color-scheme: dark;
 }
+
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
-body { background: var(--ground); color: var(--paper); font-family: var(--hand); overflow: hidden; overscroll-behavior: none; -webkit-font-smoothing: antialiased; }
-button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+body {
+  background: var(--ground);
+  color: var(--paper);
+  font-family: var(--voice);
+  font-size: var(--step-0);
+  line-height: 1.55;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* The room speaks in italic. This is the sound of it, used wherever the
+   interface is quoting or offering the room's own words. */
+button, input, textarea { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; font-family: var(--voice); font-style: italic; }
+input { font-style: normal; }
 
 .room { position: fixed; inset: 0; }
 .world { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: none; }
@@ -22,58 +95,137 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* focusable but visually absent: the canvas draws the focus ring */
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-.choose { position: absolute; left: clamp(20px, 9vw, 140px); bottom: 14vh; display: grid; gap: 1.2rem; justify-items: start; animation: rise 2s ease both; }
-.begin { font-size: clamp(2rem, 4.4vw, 3.6rem); font-style: italic; letter-spacing: 0.01em; color: var(--paper); border-bottom: 1px solid var(--paper-dim); padding-bottom: 0.15em; transition: border-color .5s, color .5s, letter-spacing .8s; }
+/* ── the choice the room offers ────────────────────────────────────── */
+.choose {
+  position: absolute; left: clamp(20px, 9vw, 140px); bottom: 14vh;
+  display: grid; gap: 1.2rem; justify-items: start;
+  animation: rise-choose 2s ease both;
+}
+.begin {
+  font-family: var(--voice);
+  font-size: var(--step-4); font-style: italic; line-height: 1.02;
+  color: var(--paper); border-bottom: 1px solid var(--paper-faint); padding-bottom: 0.15em;
+  transition: border-color .5s, color .5s, letter-spacing .8s;
+}
 .begin:hover, .begin:focus-visible { outline: none; border-color: var(--lamp); color: var(--lamp); letter-spacing: 0.06em; }
-.notyet { font-style: italic; font-size: 1.05rem; color: var(--paper-dim); }
+.notyet { font-style: italic; font-size: var(--step-0); color: var(--paper-dim); }
 .notyet:hover, .notyet:focus-visible { color: var(--paper); outline: none; }
-@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes rise-choose { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
-.forget { position: absolute; right: 22px; bottom: 16px; display: flex; gap: 0.9rem; align-items: baseline; font-style: italic; font-size: 0.95rem; color: var(--paper-dim); opacity: 0; transition: opacity .8s; }
+.forget {
+  position: absolute; right: 22px; bottom: 16px; display: flex; gap: 0.9rem; align-items: baseline;
+  font-style: italic; font-size: var(--step--1); color: var(--paper-dim); opacity: 0; transition: opacity .8s;
+}
 .forget.near, .forget:hover, .forget:focus-within { opacity: 0.9; }
 .forget button:hover, .forget button:focus-visible { color: var(--lamp); outline: none; }
 
-/* debug: the one place that speaks plainly */
-.debug { position: absolute; top: 0; right: 0; bottom: 0; width: min(400px, 100vw); z-index: 20; background: oklch(0.12 0.006 175 / 0.94); backdrop-filter: blur(10px); border-left: 1px solid oklch(1 0 0 / 0.1); padding: 18px 18px 40px; overflow-y: auto; color: var(--paper-dim); font: 12px/1.5 ui-monospace, 'SF Mono', Menlo, monospace; cursor: auto; }
-.debug button { cursor: pointer; }
-.debug h4 { margin: 22px 0 8px; font: 600 10px/1 var(--grot); letter-spacing: 0.14em; text-transform: uppercase; color: var(--lamp); }
+/* ── debug: the one place that speaks plainly ──────────────────────────
+   Upright grotesque at a fixed small size, because this is instrumentation
+   rather than text the room is saying. */
+.debug {
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(400px, 100vw); z-index: 20;
+  background: var(--ground-deep); backdrop-filter: blur(10px);
+  border-left: 1px solid var(--surface-edge); padding: 18px 18px 40px; overflow-y: auto;
+  color: var(--surface-dim);
+  font: 12px/1.5 var(--display); font-style: normal; cursor: auto;
+}
+.debug button { cursor: pointer; font-family: var(--display); font-style: normal; }
+.debug h4 {
+  margin: 22px 0 8px; font: 600 var(--step--1)/1 var(--display); font-style: normal;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--lamp);
+}
 .debug h4:first-child { margin-top: 0; }
 .debug .row { display: grid; grid-template-columns: 6rem 1fr 3rem; gap: 8px; }
-.debug .st.held { color: oklch(0.82 0.12 150); } .debug .st.revised { color: oklch(0.78 0.13 40); } .debug .st.forming { color: var(--lamp); }
-.debug .bar { height: 3px; background: oklch(1 0 0 / 0.1); margin: 3px 0; } .debug .bar i { display: block; height: 100%; background: var(--lamp); }
-.debug small { display: block; color: oklch(0.5 0.01 175); margin-bottom: 8px; }
-.debug .tr { display: grid; grid-template-columns: 5.5rem 1fr 2.4rem; gap: 8px; align-items: center; } .debug .tr small { grid-column: 1 / -1; margin: 0 0 4px; }
+.debug .st { font-style: normal; }
+/* statuses need to be separable at a glance, so they get their own hues —
+   these are the only other colours in the frame. */
+.debug .st.held { color: oklch(0.84 0.14 152); }
+.debug .st.revised { color: oklch(0.82 0.14 42); }
+.debug .st.forming { color: var(--lamp); }
+.debug .bar { height: 3px; background: oklch(1 0 0 / 0.1); margin: 3px 0; }
+.debug .bar i { display: block; height: 100%; background: var(--lamp); }
+/* was 0.5 lightness on a 0.12 ground: 3.4:1, under AA for body text */
+.debug small { display: block; color: var(--paper-faint); margin-bottom: 8px; }
+.debug .tr { display: grid; grid-template-columns: 5.5rem 1fr 2.4rem; gap: 8px; align-items: center; }
+.debug .tr small { grid-column: 1 / -1; margin: 0 0 4px; }
 .debug .pbtns { display: flex; flex-wrap: wrap; gap: 6px; }
-.debug .pbtns button { border: 1px solid oklch(1 0 0 / 0.15); padding: 5px 10px; border-radius: 999px; color: var(--paper-dim); }
+.debug .pbtns button { border: 1px solid oklch(1 0 0 / 0.18); padding: 5px 10px; border-radius: 999px; color: var(--surface-dim); }
 .debug .pbtns button:hover { border-color: var(--lamp); color: var(--paper); }
-.debug .ev { padding: 2px 0; border-bottom: 1px solid oklch(1 0 0 / 0.06); } .debug .evt { color: oklch(0.78 0.13 40); }
+.debug .ev { padding: 2px 0; border-bottom: 1px solid oklch(1 0 0 / 0.06); font-style: italic; font-family: var(--voice); }
+.debug .evt { color: oklch(0.82 0.14 42); font-family: var(--display); font-style: normal; }
 
 @media (prefers-reduced-motion: reduce) { .choose { animation: none; } }
 
-/* a real window, and the desk */
-.portal, .desk { position: absolute; z-index: 20; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 2rem 2rem 1.6rem; border-radius: 18px; background: oklch(0.2 0.03 230 / 0.94); backdrop-filter: blur(14px); color: oklch(0.96 0.02 220); box-shadow: 0 20px 80px oklch(0 0 0 / 0.5); animation: rise .9s ease both; }
-@keyframes rise { from { opacity: 0; transform: translate(-50%, -46%); } }
-.portal-kicker { font-family: var(--grotesk, inherit); font-size: .75rem; letter-spacing: .3em; text-transform: uppercase; opacity: .7; margin: 0 0 .6rem; }
-.portal h2, .desk h2 { margin: 0 0 .5rem; font-family: "Bricolage Grotesque Variable", sans-serif; font-weight: 700; font-size: clamp(1.8rem, 5vw, 2.6rem); line-height: 1.05; }
-.portal-line { font-style: italic; font-size: 1.35rem; margin: .2rem 0 .8rem; }
-.portal-host { font-size: .85rem; opacity: .6; margin: 0 0 1.4rem; }
+/* ── a real window, and the desk ─────────────────────────────────────── */
+.portal, .desk {
+  position: absolute; z-index: 20; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto;
+  padding: 2rem 2rem 1.6rem; border-radius: 18px;
+  background: var(--surface); backdrop-filter: blur(14px);
+  color: var(--surface-ink);
+  border: 1px solid var(--surface-edge);
+  box-shadow: 0 20px 80px oklch(0 0 0 / 0.5);
+  animation: rise-surface .9s ease both;
+}
+@keyframes rise-surface { from { opacity: 0; transform: translate(-50%, -46%); } }
+
+.portal-kicker {
+  font-family: var(--display); font-style: normal;
+  font-size: var(--step--1); letter-spacing: var(--tracking-caps);
+  text-transform: uppercase; color: var(--surface-dim); margin: 0 0 .6rem;
+}
+.portal h2, .desk h2 {
+  margin: 0 0 .5rem; font-family: var(--display); font-style: normal; font-weight: 700;
+  font-size: var(--step-3); line-height: 1.05; letter-spacing: var(--tracking-display);
+  color: var(--surface-ink);
+}
+.portal-line { font-style: italic; font-size: var(--step-1); line-height: 1.4; margin: .2rem 0 .8rem; }
+.portal-host { font-family: var(--display); font-style: normal; font-size: var(--step--1); color: var(--surface-dim); margin: 0 0 1.4rem; }
 .portal-acts { display: flex; gap: 1.2rem; align-items: baseline; flex-wrap: wrap; }
-.portal a.begin { text-decoration: none; display: inline-block; }
-.desk header p { font-style: italic; opacity: .8; margin: 0 0 1rem; line-height: 1.4; }
+.portal a.begin { text-decoration: none; display: inline-block; font-size: var(--step-2); }
+
+.desk header p { font-style: italic; color: var(--surface-dim); margin: 0 0 1rem; line-height: 1.45; }
 .desk form { display: flex; gap: .6rem; margin-bottom: 1rem; }
-.desk input { flex: 1; min-width: 0; font: inherit; font-size: 1.1rem; padding: .6rem .8rem; border-radius: 10px; border: 1px solid oklch(1 0 0 / .25); background: oklch(0 0 0 / .25); color: inherit; }
-.desk input:focus { outline: 2px solid oklch(0.85 0.12 85); }
-.desk form button { font: inherit; padding: .5rem 1rem; border-radius: 10px; border: 0; background: oklch(0.85 0.12 85); color: oklch(0.2 0.03 60); cursor: pointer; }
+.desk input {
+  flex: 1; min-width: 0; font-family: var(--voice); font-style: normal;
+  font-size: var(--step-0); padding: .6rem .8rem; border-radius: 10px;
+  border: 1px solid oklch(1 0 0 / .22); background: oklch(0 0 0 / .28); color: var(--surface-ink);
+}
+.desk input:focus { outline: 2px solid var(--lamp); outline-offset: 1px; }
+.desk form button {
+  font-family: var(--display); font-style: normal; font-size: var(--step--1);
+  letter-spacing: .04em; padding: .5rem 1rem; border-radius: 10px; border: 0;
+  background: var(--lamp); color: oklch(0.2 0.03 60); cursor: pointer;
+}
 .desk form button:disabled { opacity: .4; cursor: default; }
+
+/* ── the notes on the desk ───────────────────────────────────────────
+   Paper, so light and warm: these are the brightest surfaces in the whole
+   interface, which is the point — they are the only things anyone leaves. */
 .slips { list-style: none; margin: 0 0 1rem; padding: 0; display: grid; gap: .55rem; max-height: 42vh; overflow: auto; }
-.slips li { display: flex; gap: .6rem; justify-content: space-between; align-items: flex-start; padding: .55rem .8rem; border-radius: 6px; background: oklch(0.93 0.05 calc(60 + var(--h, 0))); color: oklch(0.25 0.03 60); font-size: 1.05rem; line-height: 1.3; word-break: break-word; }
-.slips li[data-hand="0"] { --h: 0; } .slips li[data-hand="1"] { --h: 25; } .slips li[data-hand="2"] { --h: 60; } .slips li[data-hand="3"] { --h: 100; } .slips li[data-hand="4"] { --h: 150; } .slips li[data-hand="5"] { --h: 190; }
-.slips li[data-hand="6"] { --h: 230; } .slips li[data-hand="7"] { --h: 270; } .slips li[data-hand="8"] { --h: 300; } .slips li[data-hand="9"] { --h: 330; } .slips li[data-hand="10"] { --h: 345; } .slips li[data-hand="11"] { --h: 120; }
-.slips li button { opacity: .35; font-size: 1.1rem; line-height: 1; padding: 0 .2rem; color: inherit; cursor: pointer; }
-.slips li:hover button, .slips li button:focus-visible { opacity: .9; }
-.slips li.empty { background: transparent; color: inherit; opacity: .6; font-style: italic; }
+.slips li {
+  display: flex; gap: .6rem; justify-content: space-between; align-items: flex-start;
+  padding: .55rem .8rem; border-radius: 6px;
+  background: oklch(0.93 0.045 var(--h)); color: oklch(0.26 0.03 var(--h));
+  font-size: var(--step-0); line-height: 1.35; word-break: break-word;
+}
+/* twelve hands, twelve inks — a paper set, so hues are spread wide and held
+   at low chroma rather than made bright */
+.slips li[data-hand="0"] { --h: 25; }  .slips li[data-hand="1"] { --h: 55; }
+.slips li[data-hand="2"] { --h: 85; }  .slips li[data-hand="3"] { --h: 110; }
+.slips li[data-hand="4"] { --h: 145; } .slips li[data-hand="5"] { --h: 175; }
+.slips li[data-hand="6"] { --h: 205; } .slips li[data-hand="7"] { --h: 240; }
+.slips li[data-hand="8"] { --h: 275; } .slips li[data-hand="9"] { --h: 305; }
+.slips li[data-hand="10"] { --h: 335; } .slips li[data-hand="11"] { --h: 190; }
+.slips li button { opacity: .5; font-size: 1.1rem; line-height: 1; padding: 0 .2rem; color: inherit; cursor: pointer; }
+.slips li:hover button, .slips li button:focus-visible { opacity: 1; }
+.slips li.empty { background: transparent; color: var(--surface-dim); font-style: italic; }
 .desk .leave { margin: 0; }
-/* small screens: the desk sits at the top so the keyboard does not cover it, and buttons are finger-sized */
+
+.slips li button.down { font-family: var(--display); font-style: normal; font-size: .72rem; letter-spacing: .04em; opacity: .7; white-space: nowrap; text-decoration: underline; }
+
+/* small screens: the desk sits at the top so the keyboard does not cover it,
+   and every target is finger-sized */
 @media (max-width: 600px) {
   .desk { top: 16px; left: 16px; width: calc(100vw - 32px); transform: none; animation: none; padding: 1.4rem 1.2rem 1.2rem; }
   .slips { max-height: 34dvh; }
@@ -81,7 +233,5 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   .portal { padding: 1.6rem 1.3rem 1.3rem; }
   .portal .notyet, .desk .leave, .slips li button { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; }
   .desk form button { min-height: 44px; }
-  .portal a.begin { font-size: clamp(1.8rem, 9vw, 2.4rem); }
+  .portal a.begin { font-size: var(--step-3); }
 }
-
-.slips li button.down { font-size: .8rem; font-style: italic; opacity: .6; white-space: nowrap; text-decoration: underline; }

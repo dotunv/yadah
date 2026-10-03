@@ -13,6 +13,10 @@ const col = (l: number, c: number, h: number, a = 1) => `oklch(${l} ${c} ${h} / 
 const SERIF = '"Alegreya", "Iowan Old Style", Georgia, serif'
 const GROTESK = '"Bricolage Grotesque Variable", "Helvetica Neue", system-ui, sans-serif'
 
+/** Canvas can set variable-font axes; TypeScript's DOM lib has not caught up. */
+type VarCtx = CanvasRenderingContext2D & { fontVariationSettings: string }
+const vars = (ctx: CanvasRenderingContext2D) => ctx as VarCtx
+
 interface Gfx {
   ctx: CanvasRenderingContext2D
   dark: HTMLCanvasElement
@@ -145,6 +149,10 @@ function drawWordmark(w: World, ctx: CanvasRenderingContext2D) {
   const letters = 'yadah'.split('')
   ctx.save()
   ctx.font = `800 ${size}px ${GROTESK}`
+  // The wordmark is the largest text in the piece by a wide margin, so it gets
+  // the optical-size axis set to match rather than the 14pt default: at this
+  // size the display cut opens up and the counters stop crowding.
+  vars(ctx).fontVariationSettings = `"opsz" ${Math.round(clamp(size / 2, 14, 96))}`
   ctx.textBaseline = 'alphabetic'
   const widths = letters.map((c) => ctx.measureText(c).width)
   const gap = size * 0.015
@@ -169,6 +177,7 @@ function drawWordmark(w: World, ctx: CanvasRenderingContext2D) {
     ctx.restore()
     x += widths[i] + gap
   })
+  vars(ctx).fontVariationSettings = 'normal'
   ctx.restore()
 }
 
