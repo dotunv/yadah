@@ -39,8 +39,10 @@ export function step(prev: Profile, sess: Session, o: Obs, now = Date.now()): St
     inputs: { ...prev.inputs },
     marks: prev.marks,
     revisions: prev.revisions,
+    misreads: prev.misreads ?? [],
   }
   let session = sess
+  let goneNow = false
 
   // ── 1. The relationship ──────────────────────────────────────────────
   if ('id' in o) {
@@ -73,18 +75,23 @@ export function step(prev: Profile, sess: Session, o: Obs, now = Date.now()): St
         m.wary = clamp(m.wary + 0.12)
         break
     }
+    // chase a wary thing for long enough and it leaves for good
+    if (o.id === 'stranger' && !m.gone && m.chased >= 60 && m.wary > 0.85 && (o.t === 'chase' || o.t === 'slip')) {
+      m.gone = true
+      goneNow = true
+    }
     p.entities[o.id] = m
   }
 
   switch (o.t) {
     case 'mark': {
-      const marks = [...p.marks, { ...o.mark, visit: p.visits }]
+      const marks = [...p.marks, { ...o.mark, visit: p.visits, life: 1 }]
       if (marks.length > MAX_MARKS) {
         // forget the faintest of the old ones first
         let drop = 0
         let worst = Infinity
         for (let i = 0; i < marks.length - 12; i++) {
-          const score = marks[i].w + marks[i].visit * 0.02
+          const score = marks[i].w + (marks[i].life ?? 1) * 0.6 + (marks[i].dead ? -5 : 0)
           if (score < worst) {
             worst = score
             drop = i
@@ -95,6 +102,26 @@ export function step(prev: Profile, sess: Session, o: Obs, now = Date.now()): St
       p.marks = marks
       break
     }
+    case 'renew':
+      if (p.marks[o.index]) {
+        const marks = [...p.marks]
+        marks[o.index] = { ...marks[o.index], life: Math.min(1, (marks[o.index].life ?? 1) + 0.5), dead: false, visit: p.visits }
+        p.marks = marks
+      }
+      break
+    case 'prune':
+      p.marks = p.marks.filter((m) => !m.dead)
+      break
+    case 'misread':
+      p.misreads = [...p.misreads.slice(-11), { ...o.misread, visit: p.visits, corrected: false }]
+      break
+    case 'correct':
+      if (p.misreads[o.index]) {
+        const list = [...p.misreads]
+        list[o.index] = { ...list[o.index], corrected: true }
+        p.misreads = list
+      }
+      break
     case 'input':
       p.inputs[o.kind]++
       break
@@ -115,6 +142,7 @@ export function step(prev: Profile, sess: Session, o: Obs, now = Date.now()): St
   for (const def of HYPS) {
     // evidence is weighed against what was true *before* this observation
     let ev = def.weigh(o, prev, sess)
+    if (o.t === 'correct' && o.hyp === def.id) ev = { support: 1.5 }
     if (o.t === 'probe' && o.hyp === def.id) {
       const expected = def.probe!.expects === 'engage'
       ev = o.engaged === expected ? { support: 2.5 } : { contra: 2.5 }
@@ -135,6 +163,7 @@ export function step(prev: Profile, sess: Session, o: Obs, now = Date.now()): St
     }
     p.hyps[def.id] = h
   }
+  if (goneNow) events.push({ type: 'gone', id: 'stranger' })
   return { profile: p, session, events }
 }
 

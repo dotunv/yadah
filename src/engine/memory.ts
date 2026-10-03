@@ -12,6 +12,7 @@ const blankMemory = (): Memory => ({
   growth: 0.1,
   neglect: 0,
   touchedThisVisit: false,
+  gone: false,
 })
 
 const blankHyp = (): Hyp => ({ support: 0, contra: 0, status: 'unformed', revisions: 0, lastRevisedAt: 0 })
@@ -26,6 +27,7 @@ export function createProfile(now = Date.now()): Profile {
     hyps: Object.fromEntries(HYP_IDS.map((id) => [id, blankHyp()])) as Record<HypId, Hyp>,
     marks: [],
     revisions: [],
+    misreads: [],
     pace: 0.5,
     inputs: { key: 0, click: 0, move: 0 },
     activeMs: 0,
@@ -43,21 +45,33 @@ export function createSession(now = Date.now()): Session {
  * little further away, what you left behind is still there, and Yadah holds
  * its old guesses a little less tightly, so it can change its mind.
  */
+/** Days since the previous visit, for how out of practice Yadah is. */
+export const daysAway = (p: Profile, now = Date.now()) => Math.max(0, (now - p.lastVisitAt) / 86_400_000)
+
+/**
+ * Begin a new visit. Time passes in the world, and nothing is kept up for you:
+ * what you ignored drifts further away, marks you did not come back to go dark
+ * and are lost, a neglected seed closes. Yadah also holds its old guesses a
+ * little more loosely, so it can change its mind.
+ */
 export function beginVisit(prev: Profile, now = Date.now()): Profile {
+  const away = daysAway(prev, now)
   const p: Profile = {
     ...prev,
     visits: prev.visits + 1,
     lastVisitAt: now,
     entities: { ...prev.entities },
     hyps: { ...prev.hyps },
+    misreads: prev.misreads ?? [],
   }
   if (prev.visits > 0) {
     for (const id of ENTITY_IDS) {
       const m = { ...prev.entities[id] }
+      m.gone = !!m.gone
       m.neglect = m.touchedThisVisit ? 0 : m.neglect + 1
       if (m.neglect > 0) m.bond *= 0.94
       m.wary = m.wary + (0.55 - m.wary) * 0.25
-      m.growth = Math.max(0.05, m.growth - (m.neglect > 0 ? 0.04 : 0))
+      m.growth = Math.max(0.03, m.growth - (m.neglect > 0 ? 0.04 + Math.min(0.06, away * 0.01) : 0))
       m.touchedThisVisit = false
       p.entities[id] = m
     }
@@ -65,6 +79,12 @@ export function beginVisit(prev: Profile, now = Date.now()): Profile {
       const h = prev.hyps[id]
       p.hyps[id] = { ...h, support: h.support * 0.85, contra: h.contra * 0.85 }
     }
+    // marks fade with every visit that does not return to them, and faster with time away
+    const fade = 0.25 + Math.min(0.45, away * 0.05)
+    p.marks = prev.marks.map((mk) => {
+      const life = (mk.life ?? 1) - fade
+      return life <= 0 ? { ...mk, life: 0, dead: true } : { ...mk, life, dead: false }
+    })
   }
   return p
 }

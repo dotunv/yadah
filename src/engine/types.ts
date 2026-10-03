@@ -30,6 +30,8 @@ export interface Memory {
   /** Visits in a row without being touched. */
   neglect: number
   touchedThisVisit: boolean
+  /** It left, and will not come back. Only "forget me" undoes this. */
+  gone: boolean
 }
 
 /** A place where the lamp lingered. Memory made physical. */
@@ -41,6 +43,24 @@ export interface Mark {
   w: number
   /** The entity nearest when it happened, if any. */
   e: EntityId | null
+  /** 1 when fresh. Marks nobody returns to go dark, and then are gone. */
+  life: number
+  dead?: boolean
+}
+
+export type MisreadKind = 'afraid' | 'tired' | 'vanity' | 'looking' | 'light'
+
+/** Something Yadah said about *why* you did something. Confident, fluent, possibly wrong. */
+export interface Misread {
+  kind: MisreadKind
+  entity: EntityId | null
+  /** Said at the time, about "it". */
+  text: string
+  /** Said later, naming the thing. */
+  claim: string
+  at: number
+  visit: number
+  corrected: boolean
 }
 
 export type HypStatus = 'unformed' | 'forming' | 'held' | 'revised'
@@ -70,6 +90,7 @@ export interface Profile {
   hyps: Record<HypId, Hyp>
   marks: Mark[]
   revisions: Revision[]
+  misreads: Misread[]
   /** 0 (slow, careful) .. 1 (quick) — an exponential average of lamp pace. */
   pace: number
   inputs: { key: number; click: number; move: number }
@@ -94,7 +115,11 @@ export type Obs =
   | { t: 'slip'; id: EntityId }
   | { t: 'complete'; id: EntityId }
   | { t: 'leave'; id: EntityId; ms: number }
-  | { t: 'mark'; mark: Omit<Mark, 'visit'> }
+  | { t: 'mark'; mark: Omit<Mark, 'visit' | 'life' | 'dead'> }
+  | { t: 'renew'; index: number }
+  | { t: 'prune' }
+  | { t: 'misread'; misread: Omit<Misread, 'visit' | 'corrected'> }
+  | { t: 'correct'; index: number; hyp: HypId }
   | { t: 'input'; kind: 'key' | 'click' | 'move' }
   | { t: 'pace'; speed: number }
   | { t: 'active'; ms: number }
@@ -105,6 +130,7 @@ export type Interp =
   | { type: 'held'; hyp: HypId }
   | { type: 'revised'; hyp: HypId }
   | { type: 'unformed'; hyp: HypId }
+  | { type: 'gone'; id: EntityId }
 
 export interface Change {
   key: string

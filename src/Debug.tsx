@@ -49,6 +49,28 @@ export function Debug({ brain, world }: { brain: Brain; world: World | null }) {
       <div>pace {p.pace.toFixed(2)} · keys {p.inputs.key} clicks {p.inputs.click} · active {(p.activeMs / 1000).toFixed(0)}s</div>
       <div>air: hue {Math.round(intent.hue)} chroma {intent.chroma.toFixed(3)} · expression {brain.expression}</div>
       <div>ready to speak: {String(brain.ready())}</div>
+      <h4>what I have said about why you did things</h4>
+      {p.misreads.length === 0 && <small>nothing yet</small>}
+      {p.misreads.slice(-6).reverse().map((m, i) => (
+        <div className="ev" key={m.at + '-' + i}>
+          “{m.text}” <span className={m.corrected ? 'st held' : ''}>{m.corrected ? 'corrected by you' : 'uncorrected'}</span>
+        </div>
+      ))}
+      <h4>time</h4>
+      <div>
+        hour {brain.hour().toFixed(1)}{brain.hourOverride !== null ? ' (pretend)' : ''} · night {brain.night().toFixed(2)}{world?.asleep ? ' · asleep' : ''} · days away {brain.away.toFixed(1)}
+      </div>
+      <div>marks {p.marks.filter((m) => !m.dead).length} alive · {p.marks.filter((m) => m.dead).length} gone dark{p.entities.stranger.gone ? ' · the stranger has left for good' : ''}</div>
+      <div className="pbtns" style={{ marginTop: 6 }}>
+        <button onClick={() => { brain.hourOverride = 3 }}>pretend 3am</button>
+        <button onClick={() => { brain.hourOverride = 22 }}>pretend 10pm</button>
+        <button onClick={() => { brain.hourOverride = 12 }}>pretend noon</button>
+        <button onClick={() => { brain.hourOverride = null }}>real time</button>
+      </div>
+      <div className="pbtns" style={{ marginTop: 6 }}>
+        <button onClick={() => void brain.timeTravel(2)}>come back in 2 days</button>
+        <button onClick={() => void brain.timeTravel(9)}>come back in 9 days</button>
+      </div>
       <h4>try someone else</h4>
       <div className="pbtns">
         {PERSONAS.map((x) => (
@@ -63,7 +85,7 @@ export function Debug({ brain, world }: { brain: Brain; world: World | null }) {
       {brain.log.slice(0, 18).map((e, i) => (
         <div className="ev" key={e.at + '-' + i}>
           {fmt(e.obs)}
-          {e.events.map((x, j) => <div key={j} className="evt">{x.type} {x.hyp}</div>)}
+          {e.events.map((x, j) => <div key={j} className="evt">{x.type} {'hyp' in x ? x.hyp : x.id}</div>)}
         </div>
       ))}
     </aside>

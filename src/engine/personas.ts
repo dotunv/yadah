@@ -34,7 +34,7 @@ export const PERSONAS: Persona[] = [
     blurb: 'Follows whatever moves. Scares the stranger off.',
     bonds: { wanderer: 0.9, mirror: 0.45, stranger: 0.15, seed: 0.1 },
     wary: 0.85,
-    chased: 40,
+    chased: 56,
     hyps: { pursuit: [9, 1], stillness: [1, 6], patience: [1, 4], offpath: [3, 2] },
   },
   {
@@ -99,12 +99,15 @@ export function seedProfile(persona: Persona, now = Date.now()): Profile {
   for (const def of ENTITIES) {
     const n = Math.round((persona.bonds[def.id] ?? 0) * 14)
     for (let i = 0; i < n; i++) {
+      const visit = 1 + Math.floor(r() * 2)
       p.marks.push({
         x: Math.min(0.96, Math.max(0.04, def.base[0] + (r() - 0.5) * 0.18)),
         y: Math.min(0.94, Math.max(0.06, def.base[1] + (r() - 0.5) * 0.2)),
-        visit: 1 + Math.floor(r() * 2),
+        visit,
         w: 0.3 + r() * 0.7,
         e: def.id,
+        // older marks have already faded a little
+        life: visit === 1 ? 0.25 + r() * 0.5 : 0.6 + r() * 0.4,
       })
     }
   }

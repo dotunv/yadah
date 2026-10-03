@@ -69,7 +69,7 @@ export default function App() {
       <div className="grain" aria-hidden />
 
       <nav className="sr" aria-label="Presences in the room">
-        {ENTITIES.map((e) => (
+        {ENTITIES.filter((e) => !brain.profile.entities[e.id].gone).map((e) => (
           <button key={e.id} onFocus={() => world?.focusEntity(e.id)} onBlur={() => world?.focusEntity(null)} onClick={() => world?.touchEntity(e.id)}>
             {e.name}
           </button>

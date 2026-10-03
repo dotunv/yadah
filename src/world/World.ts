@@ -1,7 +1,8 @@
 import type { Brain } from '../brain'
 import { DEF, ENTITIES } from '../engine/entities'
 import { HYP, HYPS, confidence } from '../engine/hypotheses'
-import { revealLines, say, doubt, welcome, firstVisit, released } from '../engine/voice'
+import { MISREADS, misreadFor } from '../engine/misread'
+import { asleepLine, doubt, firstVisit, goneLine, husk, lateNight, outOfPractice, released, revealLines, say, wakeLine, welcome, wentDark } from '../engine/voice'
 import type { EntityId, HypId, Obs } from '../engine/types'
 import { render } from './draw'
 import { Sound } from './sound'
@@ -53,6 +54,17 @@ export class World {
   private hinted = new Set<string>()
   private noteCount = 0
   private idleHinted = false
+  /** 0..1 — how late it is. Smoothed so dusk arrives, not flips. */
+  night = 0
+  /** Deep night and not yet woken: nothing responds. */
+  asleep = false
+  woken = false
+  private wakeAcc = 0
+  private lastMisread = -60
+  private visitMisreads = 0
+  private pending: { index: number; kind: keyof typeof MISREADS; entity: EntityId | null; t0: number }[] = []
+  private renewAcc: Record<number, number> = {}
+  private pruned = false
 
   // reveal
   revealT = 0
@@ -123,13 +135,19 @@ export class World {
   private greet() {
     if (this.welcomeDone) return
     this.welcomeDone = true
+    this.night = this.brain.night()
+    const sleeping = this.night > 0.9
+    const y = this.h * 0.4
     if (this.brain.returning) {
       const [a, b] = welcome()
-      this.say(a, this.w * 0.09, this.h * 0.4, { t0: 1.2, dur: 6, size: 54 })
-      this.say(b, this.w * 0.09, this.h * 0.4 + 56, { t0: 3.6, dur: 7, size: 30 })
+      this.say(a, this.w * 0.09, y, { t0: 1.2, dur: 6, size: 54 })
+      this.say(this.brain.away > 6 ? outOfPractice : b, this.w * 0.09, y + 56, { t0: 3.6, dur: 7, size: 30 })
     } else {
-      this.say(firstVisit, this.w * 0.09, this.h * 0.4, { t0: 3, dur: 7, size: 34 })
+      this.say(firstVisit, this.w * 0.09, y, { t0: 3, dur: 7, size: 34 })
     }
+    if (sleeping) this.say(asleepLine, this.w * 0.09, y + 110, { t0: 6.5, dur: 9, size: 26 })
+    else if (this.night > 0.5) this.say(lateNight, this.w * 0.09, y + 110, { t0: 6.5, dur: 8, size: 26 })
+    if (this.brain.profile.marks.some((m) => m.dead)) this.say(wentDark, this.w * 0.09, this.h * 0.82, { t0: 7.5, dur: 8, size: 24 })
   }
 
   resize() {
@@ -294,6 +312,11 @@ export class World {
 
   private touch(e: Ent, via: 'pointer' | 'key') {
     const m = this.brain.profile.entities[e.id]
+    if (m.gone) return
+    if (this.asleep) {
+      this.nudge('asleep-touch', 'it is asleep.', e.x - 30, e.y - e.r * e.scale * 1.7 - 18)
+      return
+    }
     const rank = this.rankOf(e)
     e.near.touched = true
     if (e.tempt && !e.tempt.done) e.tempt.engaged += 2
@@ -323,7 +346,7 @@ export class World {
     this.enc = { id: e.id, t: 0, p: 0, data: {}, leaving: false, done: false, leaveAt: 0 }
     if (e.id === 'witness') this.enc.data.replay = this.lamp.history.slice()
     if (e.id === 'mirror') this.enc.data.len = 0
-    this.whisperAt(e, say(e.id, mem, 'touch'), 0.4)
+    this.whisperAt(e, e.id === 'seed' && mem.neglect >= 3 && mem.growth < 0.1 ? husk : say(e.id, mem, 'touch'), 0.4)
     if (mem.touches <= 1) this.say(DEF[e.id].name, e.x - e.r * e.scale * 0.6, e.y + e.r * e.scale * 2.4, { t0: this.t + 0.6, dur: 4, size: 24, tint: DEF[e.id].hue })
   }
 
@@ -422,7 +445,17 @@ export class World {
     if (o.t === 'dwell' || o.t === 'touch' || o.t === 'mark' || o.t === 'complete' || o.t === 'chase' || o.t === 'probe') {
       this.specks.push({ x: this.lamp.x, y: this.lamp.y, to: 'word', letter: this.noteCount++ % 5, t0: this.t })
     }
+    if (o.t === 'leave') this.maybeMisread('leave', o.id)
+    if (o.t === 'complete') this.maybeMisread('complete', o.id)
+    if (o.t === 'mark') this.maybeMisread('mark', null)
     for (const ev of events) {
+      if (ev.type === 'gone') {
+        const e = this.byId[ev.id]
+        this.whisperAt(e, goneLine, 0.3)
+        this.sound.thud()
+        e.fleeing = 4
+        e.vx += 600 * Math.sign(e.x - this.w / 2 || 1)
+      }
       if (ev.type === 'revised') {
         const probed = HYP[ev.hyp].probe?.entity
         const e = probed ? this.byId[probed] : null
@@ -449,6 +482,44 @@ export class World {
     const x = clamp(e.x - approx / 2, 16, this.w - approx - 16)
     const y = e.y - e.r * e.scale * 1.7 - 18
     this.say(text, x, clamp(y, 44, this.h - 30), { t0: this.t + delay, dur: 5.2, size, tint: e.def.hue })
+  }
+
+  /** Yadah says why you did something. It is sure. It cannot actually know. */
+  private maybeMisread(trigger: 'leave' | 'complete' | 'mark', id: EntityId | null) {
+    if (this.asleep || this.phase !== 'world' || this.t < 25 || this.t - this.lastMisread < 60 || this.visitMisreads >= 4) return
+    if (this.rand() > 0.7) return
+    const kind = misreadFor(trigger, id)
+    if (!kind) return
+    const def = MISREADS[kind]
+    this.lastMisread = this.t
+    this.visitMisreads++
+    const text = def.line(id)
+    this.brain.observe({ t: 'misread', misread: { kind, entity: id, text, claim: def.claim(id), at: Date.now() } })
+    const index = this.brain.profile.misreads.length - 1
+    const e = id ? this.byId[id] : null
+    if (e) this.whisperAt(e, text, 1.2)
+    else this.say(text, clamp(this.lamp.x - 120, 20, this.w - 380), clamp(this.lamp.y - 70, 40, this.h - 40), { t0: this.t + 1.2, dur: 5, size: 22 })
+    if (def.correction) this.pending.push({ index, kind, entity: id, t0: this.t })
+  }
+
+  private checkCorrections() {
+    const L = this.lamp
+    this.pending = this.pending.filter((p) => {
+      const c = MISREADS[p.kind].correction!
+      const age = this.t - p.t0
+      if (age > c.within) return false
+      let hit = false
+      if (c.by === 'return' && p.entity && age > 3) {
+        const e = this.byId[p.entity]
+        hit = Math.hypot(L.x - e.x, L.y - e.y) < e.r * e.scale * 2 + 50
+      } else if (c.by === 'fast') hit = L.speed > 450 && age > 1.5
+      if (!hit) return true
+      this.brain.observe({ t: 'correct', index: p.index, hyp: c.hyp })
+      const e = p.entity ? this.byId[p.entity] : null
+      if (e) this.whisperAt(e, c.says)
+      else this.say(c.says, clamp(L.x - 80, 20, this.w - 300), clamp(L.y - 70, 40, this.h - 40), { dur: 4.5, size: 22 })
+      return false
+    })
   }
 
   /** A hint, said once, in Yadah's voice, only while it still matters. */
@@ -579,6 +650,8 @@ export class World {
     this.marking(dt)
     this.updateBeacon(dt)
     this.alive(dt)
+    this.hours(dt)
+    this.checkCorrections()
 
     // specks: motes of memory flying to where they will be kept
     for (const s of this.specks) {
@@ -612,6 +685,47 @@ export class World {
     }
   }
 
+  /** Yadah keeps hours. At night it is half asleep; in the small hours, asleep. You can wake it. */
+  private hours(dt: number) {
+    const target = this.brain.night()
+    this.night = lerp(this.night, target, 1 - Math.exp(-dt * 0.4))
+    const was = this.asleep
+    this.asleep = this.night > 0.9 && !this.woken
+    if (target < 0.6) this.woken = false
+    if (this.asleep) {
+      // be still over the word, and it wakes
+      const L = this.lamp
+      const over = L.moved && Math.hypot(L.x - this.w * 0.5, L.y - this.h * 0.52) < Math.min(this.w, this.h) * 0.28 && L.speed < 40
+      this.wakeAcc = over ? this.wakeAcc + dt : Math.max(0, this.wakeAcc - dt * 2)
+      if (this.wakeAcc > 4) {
+        this.woken = true
+        this.asleep = false
+        this.wakeAcc = 0
+        this.say(wakeLine, this.w * 0.5 - 90, this.h * 0.3, { dur: 6, size: 30 })
+        this.sound.release()
+        for (const e of this.ents) e.pop = 0.2
+      }
+    } else if (was && !this.woken) this.wakeAcc = 0
+
+    // the places you came back to are kept; the rest go dark, then are lost
+    const L = this.lamp
+    if (this.phase === 'world' && L.moved && L.speed < 70) {
+      this.brain.profile.marks.forEach((m, i) => {
+        if (Math.hypot(m.x * this.w - L.x, m.y * this.h - L.y) < 50) {
+          this.renewAcc[i] = (this.renewAcc[i] ?? 0) + dt
+          if (this.renewAcc[i] > 1.2) {
+            this.renewAcc[i] = 0
+            this.brain.observe({ t: 'renew', index: i })
+          }
+        }
+      })
+    }
+    if (!this.pruned && this.t > 16 && this.brain.profile.marks.some((m) => m.dead)) {
+      this.pruned = true
+      this.brain.observe({ t: 'prune' })
+    }
+  }
+
   /** The small constant signs of life: dust, waking, and being learned. */
   private alive(dt: number) {
     const L = this.lamp
@@ -628,9 +742,9 @@ export class World {
     for (const e of this.ents) {
       prox[e.id] = e.prox
       bond[e.id] = p.entities[e.id].bond
-      this.hintFor(e)
+      if (!this.asleep) this.hintFor(e)
     }
-    this.sound.update(prox, bond, L.speed, this.hush)
+    this.sound.update(prox, bond, L.speed, this.hush, this.asleep ? 1 : this.night * 0.5)
 
     // dust, drifting on a slow current and stirred by the lamp
     const mo = this.motion * this.atm.pace
@@ -663,8 +777,15 @@ export class World {
     const L = this.lamp
     const it = intent.entities[e.id]
     const m = this.brain.profile.entities[e.id]
-    const mo = this.motion * this.atm.pace
+    const mo = this.motion * this.atm.pace * (this.asleep ? 0.18 : 1 - 0.45 * this.night)
 
+    if (m.gone) {
+      // it has left. It drifts out and does not return.
+      e.appear = Math.max(0, e.appear - dt * 0.5)
+      e.x += e.vx * dt
+      e.vx *= Math.exp(-0.4 * dt)
+      return
+    }
     e.appear = clamp((this.t - e.appearAt) / 2.2)
     e.phase += dt * (0.7 + e.awake * 0.6) * mo
     e.pop = lerp(e.pop, 0, 1 - Math.exp(-dt * 3))
@@ -797,7 +918,7 @@ export class World {
           tx = L.x + (dx / d) * (200 - 60 * e.trusting)
           ty = L.y + (dy / d) * (200 - 60 * e.trusting)
           k = 0.9
-        } else if (d < (330 + 140 * wary) * (0.5 + 0.5 * att + 0.3) && L.moved) {
+        } else if (d < (330 + 140 * wary) * (0.5 + 0.5 * att + 0.3) && L.moved && !this.asleep) {
           e.trusting = 0
           e.fleeing = Math.max(e.fleeing, 0.6)
           const side = Math.sin(e.phase * 0.3) > 0 ? 1 : -1
@@ -809,7 +930,7 @@ export class World {
           k = 2 + 4 * wary
         } else {
           e.trusting = Math.max(0, e.trusting - dt * 0.2)
-          if (L.moved && toL < 760 && wary < 0.8) {
+          if (L.moved && toL < 760 && wary < 0.8 && !this.asleep) {
             // curious, from a distance: it circles the lamp without coming close
             const a = Math.atan2(e.y - L.y, e.x - L.x) + 0.35 * Math.sin(this.t * 0.2)
             const r = 400 + 50 * Math.sin(this.t * 0.3)
@@ -833,7 +954,7 @@ export class World {
           e.blink = 1
           e.nextBlink = 2.5 + this.rand() * 5
         }
-        e.blink = Math.max(0, e.blink - dt * 7)
+        e.blink = this.asleep ? 1 : Math.max(0, e.blink - dt * 7)
         if (inEnc) {
           tx = cx
           ty = cy
@@ -870,6 +991,7 @@ export class World {
       for (let j = i + 1; j < this.ents.length; j++) {
         const a = this.ents[i]
         const b = this.ents[j]
+        if (a.appear < 0.1 || b.appear < 0.1) continue
         const dx = b.x - a.x
         const dy = b.y - a.y
         const d = Math.hypot(dx, dy) || 1
@@ -888,8 +1010,9 @@ export class World {
   // ───────────────────────────── watching the lamp ─────────────────────────────
   private track(dt: number) {
     const L = this.lamp
-    if (this.phase !== 'world') return
+    if (this.phase !== 'world' || this.asleep) return
     for (const e of this.ents) {
+      if (e.appear < 0.05) continue
       const d = Math.hypot(L.x - e.x, L.y - e.y)
       const near = e.appear > 0.8 && L.moved && d < e.r * e.scale * 2.2 + 70 && !this.enc
       const n = e.near
@@ -967,7 +1090,7 @@ export class World {
         this.obs({ t: 'probe', hyp: tp.hyp, engaged })
       }
     }
-    if (this.phase !== 'world' || this.enc || this.t - this.lastProbe < 42 || this.t < 30) return
+    if (this.phase !== 'world' || this.enc || this.asleep || this.t - this.lastProbe < 42 || this.t < 30) return
     if (this.brain.session.probes >= 3 || this.t - this.lamp.lastMoveAt > 5 || !this.lamp.moved) return
     void dt
     let pick: HypId | null = null
@@ -991,7 +1114,7 @@ export class World {
   }
 
   private updateBeacon(dt: number) {
-    const ready = this.brain.ready() && this.phase === 'world' && this.t > this.beaconCooldown && !this.enc
+    const ready = this.brain.ready() && this.phase === 'world' && this.t > this.beaconCooldown && !this.enc && !this.asleep
     this.beacon.on = ready
     this.beacon.vis = lerp(this.beacon.vis, ready ? 1 : 0, 1 - Math.exp(-dt * 0.9))
     if (ready !== this.beaconWas) {

@@ -1,5 +1,6 @@
 import { heldBeliefs, readyToSpeak, step } from './engine/interpret'
-import { beginVisit, createProfile, createSession } from './engine/memory'
+import { beginVisit, createProfile, createSession, daysAway } from './engine/memory'
+import { hourNow, night } from './engine/time'
 import { seedProfile, type Persona } from './engine/personas'
 import { relate, type WorldIntent } from './engine/relationship'
 import { forgetProfile, loadProfile, saveProfile, saveProfileSync } from './engine/storage'
@@ -21,6 +22,10 @@ export class Brain {
   profile: Profile = createProfile()
   session: Session = createSession()
   returning = false
+  /** Days since the last visit. */
+  away = 0
+  /** Pretend it is this hour (debug / ?hour=3). */
+  hourOverride: number | null = null
   /** 0..1 — how fully the relationship is expressed. Rises at the reveal. */
   expression = 0.35
   log: LogEntry[] = []
@@ -34,6 +39,9 @@ export class Brain {
     const saved = await loadProfile()
     this.returning =
       !!saved && (saved.activeMs >= 5000 || saved.marks.length > 0 || Object.values(saved.entities).some((m) => m.touches > 0))
+    this.away = saved ? daysAway(saved) : 0
+    const q = new URLSearchParams(location.search).get('hour')
+    if (q !== null && !Number.isNaN(Number(q))) this.hourOverride = Number(q)
     this.profile = beginVisit(saved ?? createProfile())
     this.session = createSession()
     this.expression = this.profile.revealed ? 1 : 0.35
@@ -63,6 +71,14 @@ export class Brain {
     return this.cache.intent
   }
 
+  hour() {
+    return this.hourOverride ?? hourNow()
+  }
+
+  night() {
+    return night(this.hour())
+  }
+
   ready() {
     return readyToSpeak(this.profile, this.session)
   }
@@ -85,6 +101,15 @@ export class Brain {
     this.expression = 0.35
     this.save()
     this.notify()
+  }
+
+  /** Debug: leave and come back after this many days, through the real path. */
+  async timeTravel(days: number) {
+    window.clearTimeout(this.saveTimer)
+    const p = { ...this.profile, lastVisitAt: Date.now() - days * 86_400_000 }
+    saveProfileSync(p)
+    await saveProfile(p)
+    location.reload()
   }
 
   async forget() {

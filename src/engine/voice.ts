@@ -74,6 +74,13 @@ export const say = (id: EntityId, m: Memory, kind: 'touch' | 'done' | 'slip' | '
 export const welcome = (): string[] => ['welcome back.', 'I remember how you explored.']
 export const firstVisit = 'I don’t know you yet.'
 export const released = 'this is how I remember you.'
+export const wentDark = 'some of what you left has gone dark.'
+export const goneLine = 'it left. it won’t come back.'
+export const husk = 'it has stopped waiting.'
+export const lateNight = 'it’s late. I’m only half awake.'
+export const asleepLine = 'it is asleep. be still, and it may wake.'
+export const wakeLine = 'I’m awake. I’m awake.'
+export const outOfPractice = 'it has been a while. I’m out of practice.'
 
 export const doubt = (h: HypId) => HYP[h].doubt
 
@@ -83,6 +90,9 @@ export function revealLines(p: Profile): string[] {
   for (const b of heldBeliefs(p).slice(0, 3)) {
     out.push(b.positive ? HYP[b.hyp].claim : HYP[b.hyp].opposite)
   }
+  // One reading of *why* you did something. It cannot be checked, and Yadah says it just as plainly.
+  const guess = [...p.misreads].reverse().find((m) => !m.corrected)
+  if (guess) out.push(guess.claim)
   const last = p.revisions[p.revisions.length - 1]
   if (last) out.push(`I was wrong once. ${HYP[last.hyp].doubt}`)
   out.push('I think I know where to begin.')

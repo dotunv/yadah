@@ -10,6 +10,7 @@ import { ENTITY_IDS, type EntityId, type Profile } from './types'
  */
 
 export interface EntityIntent {
+  gone: boolean
   home: [number, number]
   awake: number
   scale: number
@@ -42,7 +43,7 @@ export function relate(p: Profile, expression: number): WorldIntent {
 
   for (const def of ENTITIES) {
     const m = p.entities[def.id]
-    total += m.bond
+    total += m.gone ? 0 : m.bond
     let [x, y] = def.base
 
     if (m.bond > 0.12) {
@@ -64,6 +65,7 @@ export function relate(p: Profile, expression: number): WorldIntent {
       y = 0.5 + (y - 0.5) * (1 + away)
     }
     entities[def.id] = {
+      gone: m.gone,
       home: [clamp(x, 0.07, 0.93), clamp(y, 0.1, 0.9)],
       awake: clamp(m.bond * 1.5 * (0.4 + 0.6 * expression)),
       scale: 1 + 0.42 * m.bond * expression,

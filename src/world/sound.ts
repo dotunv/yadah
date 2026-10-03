@@ -120,16 +120,16 @@ export class Sound {
   }
 
   /** Called every frame. Closer and more-bonded things sing louder. */
-  update(prox: Record<EntityId, number>, bond: Record<EntityId, number>, speed: number, hush: number) {
+  update(prox: Record<EntityId, number>, bond: Record<EntityId, number>, speed: number, hush: number, sleep = 0) {
     const ctx = this.ctx
     if (!ctx || this.muted) return
     const t = ctx.currentTime
     for (const id of Object.keys(this.voices) as EntityId[]) {
       const v = this.voices[id]
-      const target = (0.002 + bond[id] * 0.05 + prox[id] * 0.03 * (0.4 + 0.6 * (1 - hush))) * (1 + this.swell * 3)
+      const target = (0.002 + bond[id] * 0.05 + prox[id] * 0.03 * (0.4 + 0.6 * (1 - hush))) * (1 + this.swell * 3) * (1 - 0.8 * sleep)
       v.g.gain.setTargetAtTime(target, t, 0.35)
     }
-    this.tone?.frequency.setTargetAtTime(380 + Math.min(1, speed / 900) * 900 + this.swell * 1400, t, 0.3)
+    this.tone?.frequency.setTargetAtTime((380 + Math.min(1, speed / 900) * 900 + this.swell * 1400) * (1 - 0.5 * sleep), t, 0.3)
     this.swell *= 0.985
   }
 

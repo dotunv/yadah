@@ -98,6 +98,22 @@ A first visit has to feel alive and has to teach itself without a menu:
 - Sound: every presence owns one note of a quiet chord, and it only sings as you grow close to it.
   The room literally sounds like your history. Sound starts on your first touch and can be turned off.
 
+## Being wrong, decay, and hours
+
+- **Confident misreading.** Yadah sees *that* you left something, or stopped, or finished. It does not see
+  why, and it says why anyway: *"you were afraid of it."*, *"you were tired."*, *"you were looking for
+  something."* Some can be corrected by what you do next (come back, and it says *"no. you came back."* and counts
+  it as evidence). Most stand. One of them can end up in the reveal as a line it is sure about and cannot check.
+- **Decay without upkeep.** Nothing is maintained for you. Marks you do not return to lose their colour,
+  go black and are lost, faster the longer you are away. A neglected seed closes into a husk. If you chase the
+  stranger long enough it leaves for good, and only *forget me* brings it back. Lingering on a mark renews it.
+- **Hours.** Yadah is not locked, but it keeps the clock. In the evening it is half awake. In the small hours
+  it is asleep: nothing responds, and the way in is patience. Hold the lamp still over the word for a few seconds
+  and it wakes. After a long absence it says it is out of practice. Everything stays local: the only input is
+  your own clock.
+
+Try them from the debug panel: *pretend 3am*, *come back in 9 days*, or open the page with `?hour=3`.
+
 ## Accessibility and privacy
 
 - Keyboard: arrows move the lamp, Tab visits each presence, Enter touches. Focus is drawn in the room.

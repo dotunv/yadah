@@ -161,15 +161,28 @@ function drawMarks(w: World, ctx: CanvasRenderingContext2D) {
     const bond = m.e ? w.brain.profile.entities[m.e].bond : 0
     const x = m.x * w.w
     const y = m.y * w.h
-    const old = Math.min(1, (w.brain.profile.visits - m.visit) * 0.12)
+    const life = m.life ?? 1
     const size = 3 + 9 * m.w
-    ctx.fillStyle = col(0.2, def ? 0.02 + 0.1 * bond : 0.01, def ? def.hue : w.atm.hue, (0.28 + 0.4 * m.w) * (1 - old * 0.5) * (enc ? 1.4 : 1))
+    // a mark nobody returned to loses its colour, then goes black, then is gone
+    const dying = m.dead ? clamp(1 - w.t / 15) : 1
+    const tint = (def ? 0.02 + 0.1 * bond : 0.01) * (0.2 + 0.8 * life)
+    ctx.fillStyle = m.dead
+      ? col(0.05, 0.005, w.atm.hue, 0.7 * dying)
+      : col(0.2 - 0.06 * (1 - life), tint, def ? def.hue : w.atm.hue, (0.18 + 0.5 * m.w * life) * (enc ? 1.4 : 1))
     for (let k = 0; k < 6; k++) {
       ctx.beginPath()
-      ctx.ellipse(x + (r() - 0.5) * size * 1.6, y + (r() - 0.5) * size * 1.6, size * (0.3 + r() * 0.5), size * (0.25 + r() * 0.4), r() * 3, 0, 6.3)
+      ctx.ellipse(x + (r() - 0.5) * size * 1.6, y + (r() - 0.5) * size * 1.6, size * (0.3 + r() * 0.5) * (m.dead ? 0.7 + 0.3 * dying : 1), size * (0.25 + r() * 0.4), r() * 3, 0, 6.3)
       ctx.fill()
     }
   })
+  // where something used to live
+  for (const e of w.ents) {
+    if (!w.brain.profile.entities[e.id].gone) continue
+    ctx.fillStyle = col(0.06, 0.005, w.atm.hue, 0.5)
+    ctx.beginPath()
+    ctx.ellipse(e.hx, e.hy, e.r * 1.1, e.r * 0.9, 0.3, 0, 6.3)
+    ctx.fill()
+  }
 }
 
 function drawTrails(w: World, ctx: CanvasRenderingContext2D) {
@@ -432,6 +445,7 @@ function drawEntity(w: World, ctx: CanvasRenderingContext2D, e: Ent) {
     case 'seed': {
       const feed = enc ? ((enc.data.feed as number) ?? 0) : 0
       const growth = clamp(mem.growth + feed * 0.07)
+      const dormant = mem.neglect >= 3 && mem.growth < 0.1 && feed < 0.5
       const n = 5 + Math.floor(growth * 7)
       const openness = 0.3 + 0.7 * growth
       const len = R * (0.7 + growth * 0.8)
@@ -439,7 +453,7 @@ function drawEntity(w: World, ctx: CanvasRenderingContext2D, e: Ent) {
         const a = (k / (n - 1) - 0.5) * 6.2832 * openness * (n - 1) / n - 1.5708 + Math.sin(w.t * 0.5 + k) * 0.05 * w.motion
         ctx.save()
         ctx.rotate(a)
-        ctx.fillStyle = k % 2 ? paperLo : lit(R)
+        ctx.fillStyle = dormant ? col(0.34, 0.005, w.atm.hue) : k % 2 ? paperLo : lit(R)
         ctx.beginPath()
         // a petal: narrow at the root, full toward the tip
         const wd = R * (0.22 + growth * 0.14)
@@ -458,7 +472,7 @@ function drawEntity(w: World, ctx: CanvasRenderingContext2D, e: Ent) {
         ctx.globalAlpha = ease(e.appear)
         ctx.restore()
       }
-      ctx.fillStyle = acc
+      ctx.fillStyle = dormant ? col(0.3, 0.005, w.atm.hue) : acc
       ctx.beginPath()
       ctx.arc(0, 0, R * (0.16 + 0.1 * growth), 0, 6.3)
       ctx.fill()
@@ -526,14 +540,14 @@ function drawDarkness(w: World, g: Gfx) {
   c.setTransform(dpr, 0, 0, dpr, 0, 0)
   c.globalCompositeOperation = 'source-over'
   c.clearRect(0, 0, W, H)
-  c.fillStyle = col(0.075, 0.006 + w.atm.chroma * 0.4, w.atm.hue, clamp(0.74 + 0.18 * w.dim + 0.08 * w.hush))
+  c.fillStyle = col(0.075, 0.006 + w.atm.chroma * 0.4, w.atm.hue, clamp(0.74 + 0.18 * w.dim + 0.08 * w.hush + 0.1 * w.night + (w.asleep ? 0.06 : 0)))
   c.fillRect(0, 0, W, H)
   c.globalCompositeOperation = 'destination-out'
 
   const base = (190 + Math.min(W, H) * 0.19) * w.atm.lamp
   const bell = w.phase === 'release' ? Math.sin(Math.PI * clamp(w.releaseT / 3)) : 0
   const lit = ease(clamp(w.ignite)) * (w.ignite < 1 ? 0.82 + 0.18 * Math.sin(w.t * 31) * Math.sin(w.t * 17) : 1)
-  const R = base * (1 - 0.22 * w.dim - 0.55 * w.hush) * (1 + 3.2 * bell) * lit
+  const R = base * (1 - 0.22 * w.dim - 0.55 * w.hush - 0.25 * w.night) * (1 + 3.2 * bell) * lit
   hole(c, w.lamp.x, w.lamp.y, R, 1)
 
   for (const e of w.ents) {
