@@ -85,6 +85,13 @@ export function render(w: World) {
   const gr = ground(w)
   ctx.fillStyle = col(gr.l, gr.chroma, gr.hue)
   ctx.fillRect(0, 0, W, H)
+  // the floor is not one flat colour: lighter and warmer toward the middle, cooler at the walls
+  const wash = ctx.createRadialGradient(W * 0.5, H * 0.58, 0, W * 0.5, H * 0.58, Math.max(W, H) * 0.7)
+  wash.addColorStop(0, col(gr.l + 0.12, gr.chroma * 0.9, gr.hue + 28, 0.55))
+  wash.addColorStop(0.6, col(gr.l, gr.chroma, gr.hue, 0))
+  wash.addColorStop(1, col(gr.l - 0.1, gr.chroma * 1.15, gr.hue - 24, 0.5))
+  ctx.fillStyle = wash
+  ctx.fillRect(0, 0, W, H)
   if (g.tex) {
     ctx.save()
     ctx.globalCompositeOperation = 'overlay'
@@ -155,9 +162,9 @@ function drawWordmark(w: World, ctx: CanvasRenderingContext2D) {
     ctx.translate(x + widths[i] / 2, base + dy)
     ctx.rotate(jit)
     // pressed into the paper: a light edge and a dark body
-    ctx.fillStyle = col(0.46, 0.01 + w.atm.chroma * 0.5, w.atm.hue, 0.5)
+    ctx.fillStyle = col(0.7, 0.05 + w.atm.chroma * 0.5, w.atm.hue, 0.5)
     ctx.fillText(c, -widths[i] / 2 + 1.5, 1.5)
-    ctx.fillStyle = col(0.3 + 0.38 * lit, 0.01 + w.atm.chroma * 0.5 + 0.03 * lit, lit > 0.05 ? 78 : w.atm.hue, 0.7 + 0.2 * lit)
+    ctx.fillStyle = col(0.36 + 0.4 * lit, 0.09 + w.atm.chroma * 0.6 + 0.05 * lit, lit > 0.05 ? 78 : w.atm.hue, 0.7 + 0.2 * lit)
     ctx.fillText(c, -widths[i] / 2, 0)
     ctx.restore()
     x += widths[i] + gap
@@ -248,11 +255,12 @@ function drawEntity(w: World, ctx: CanvasRenderingContext2D, e: Ent) {
   const mem = w.brain.profile.entities[e.id]
   const L = w.lamp
   const R = e.r * e.scale * (0.55 + 0.45 * ease(e.appear)) * (1 + 0.022 * Math.sin(e.phase) * (w.motion > 0.1 ? 1 : 0) + e.pop)
-  const paper = col(0.8, 0.012 + 0.006 * e.awake, w.atm.hue)
-  const paperLo = col(0.62, 0.012, w.atm.hue)
-  const ink = col(0.15, 0.01, w.atm.hue)
-  const acc = col(0.72, 0.012 + 0.17 * mem.bond, e.def.hue)
-  const accSoft = col(0.72, 0.012 + 0.17 * mem.bond, e.def.hue, 0.5)
+  // everything has its own colour from the start; closeness makes it deeper
+  const paper = col(0.86, 0.035 + 0.05 * e.awake, e.def.hue)
+  const paperLo = col(0.68, 0.06, e.def.hue)
+  const ink = col(0.2, 0.05, e.def.hue)
+  const acc = col(0.72, 0.1 + 0.16 * mem.bond, e.def.hue)
+  const accSoft = col(0.72, 0.1 + 0.16 * mem.bond, e.def.hue, 0.5)
 
   // a shadow that falls away from the lamp
   const dx = e.x - L.x
@@ -416,7 +424,7 @@ function drawEntity(w: World, ctx: CanvasRenderingContext2D, e: Ent) {
         else ctx.lineTo(x, y)
       }
       ctx.closePath()
-      ctx.fillStyle = col(0.11, 0.01, w.atm.hue)
+      ctx.fillStyle = col(0.2, 0.09, 295)
       ctx.fill()
       noShadow()
       ctx.strokeStyle = col(0.5 + calm * 0.25, 0.012 + 0.16 * mem.bond * calm, e.def.hue, 0.3 + 0.5 * calm)
@@ -594,7 +602,8 @@ function drawDarkness(w: World, g: Gfx) {
   c.setTransform(dpr, 0, 0, dpr, 0, 0)
   c.globalCompositeOperation = 'source-over'
   c.clearRect(0, 0, W, H)
-  c.fillStyle = col(0.075, 0.006 + w.atm.chroma * 0.4, w.atm.hue, clamp(0.74 + 0.18 * w.dim + 0.08 * w.hush + 0.1 * w.night + (w.asleep ? 0.06 : 0) + 0.1 * w.tension))
+  // dusk, not black: the dark is a deep tone of the place, and thin enough to see the room through
+  c.fillStyle = col(0.17, 0.06 + w.atm.chroma * 0.5, ground(w).hue, clamp(0.4 + 0.2 * w.dim + 0.1 * w.hush + 0.12 * w.night + (w.asleep ? 0.08 : 0) + 0.1 * w.tension))
   c.fillRect(0, 0, W, H)
   c.globalCompositeOperation = 'destination-out'
 

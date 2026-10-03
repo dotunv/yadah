@@ -90,7 +90,7 @@ export function relate(p: Profile, expression: number): WorldIntent {
   return {
     entities,
     hue: mass > 0.01 ? ((Math.atan2(vy, vx) * 180) / Math.PI + 360) % 360 : 175,
-    chroma: 0.008 + 0.12 * colour,
+    chroma: 0.04 + 0.11 * colour,
     lamp: 1 + 0.35 * clamp(total / 3) * expression,
     pace: clamp(0.55 + 0.9 * p.pace, 0.45, 1.45),
     hearth,

@@ -15,9 +15,9 @@ const angleLerp = (a: number, b: number, t: number) => (a + ((((b - a) % 360) + 
 export function ground(w: World) {
   const hall = w.place === 'hall'
   return {
-    hue: hall ? w.atm.hue : angleLerp(w.atm.hue, PLACES[w.place].hue, 0.62),
-    chroma: 0.012 + w.atm.chroma * 0.55 + (hall ? 0 : 0.028),
-    l: { hall: 0.44, archive: 0.42, garden: 0.36, shore: 0.42 }[w.place],
+    hue: hall ? w.atm.hue : w.place === 'archive' ? angleLerp(w.atm.hue, 52, 0.8) : angleLerp(w.atm.hue, PLACES[w.place].hue, 0.62),
+    chroma: { hall: 0.04, archive: 0.05, garden: 0.1, shore: 0.08 }[w.place] + w.atm.chroma * 0.6,
+    l: { hall: 0.58, archive: 0.5, garden: 0.46, shore: 0.5 }[w.place],
   }
 }
 
@@ -27,28 +27,28 @@ export function drawProps(w: World, ctx: CanvasRenderingContext2D) {
   const g = ground(w)
   switch (w.place) {
     case 'hall':
-      return hearth(w, ctx, g.hue)
+      return hearth(w, ctx)
     case 'archive':
       return archive(w, ctx, g.hue)
     case 'garden':
-      return garden(w, ctx, g.hue)
+      return garden(w, ctx)
     case 'shore':
       return shore(w, ctx, g.hue)
   }
 }
 
-function hearth(w: World, ctx: CanvasRenderingContext2D, hue: number) {
+function hearth(w: World, ctx: CanvasRenderingContext2D) {
   const x = w.w * 0.5
   const y = w.h * 0.64
   const R = Math.min(w.w, w.h) * 0.085
   const r = rngOf(9)
-  ctx.fillStyle = col(0.22, 0.01, hue, 0.7)
+  ctx.fillStyle = col(0.3, 0.05, 40, 0.75)
   ctx.beginPath()
   ctx.ellipse(x, y, R * 1.05, R * 0.62, 0, 0, 6.3)
   ctx.fill()
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * 6.283
-    ctx.fillStyle = col(0.3 + r() * 0.12, 0.01, hue, 0.9)
+    ctx.fillStyle = col(0.42 + r() * 0.14, 0.04 + r() * 0.04, 40 + r() * 30, 0.95)
     ctx.beginPath()
     ctx.ellipse(x + Math.cos(a) * R * 1.12, y + Math.sin(a) * R * 0.68, R * 0.17, R * 0.12, a, 0, 6.3)
     ctx.fill()
@@ -80,7 +80,7 @@ function archive(w: World, ctx: CanvasRenderingContext2D, hue: number) {
   ctx.fill()
   ctx.restore()
   // the shelves along the back wall
-  ctx.fillStyle = col(0.15, 0.02, hue)
+  ctx.fillStyle = col(0.26, 0.06, hue)
   ctx.fillRect(0, 0, W, H * 0.2)
   for (let row = 0; row < 2; row++) {
     const y = row * H * 0.1 + H * 0.012
@@ -90,7 +90,7 @@ function archive(w: World, ctx: CanvasRenderingContext2D, hue: number) {
     while (x < W) {
       const bw = 5 + r() * 12
       const bh = H * (0.045 + r() * 0.04)
-      ctx.fillStyle = col(0.2 + r() * 0.2, 0.02 + r() * 0.05, hue + (r() - 0.5) * 60, 0.95)
+      ctx.fillStyle = col(0.34 + r() * 0.22, 0.07 + r() * 0.1, hue + (r() - 0.5) * 140, 0.97)
       ctx.fillRect(x, y + H * 0.088 - bh, bw, bh)
       x += bw + 1
     }
@@ -98,7 +98,7 @@ function archive(w: World, ctx: CanvasRenderingContext2D, hue: number) {
   // a long table and what is left on it
   const tx = W * 0.5
   const ty = H * 0.62
-  ctx.fillStyle = col(0.26, 0.03, hue + 10)
+  ctx.fillStyle = col(0.4, 0.08, hue - 10)
   ctx.beginPath()
   ctx.roundRect(tx - W * 0.17, ty - H * 0.05, W * 0.34, H * 0.1, 6)
   ctx.fill()
@@ -112,7 +112,7 @@ function archive(w: World, ctx: CanvasRenderingContext2D, hue: number) {
   }
 }
 
-function garden(w: World, ctx: CanvasRenderingContext2D, hue: number) {
+function garden(w: World, ctx: CanvasRenderingContext2D) {
   const { w: W, h: H } = w
   const r = rngOf(33)
   // a path of flat stones from the door toward the middle
@@ -120,7 +120,7 @@ function garden(w: World, ctx: CanvasRenderingContext2D, hue: number) {
     const t = i / 13
     const x = W * (0.04 + t * 0.62)
     const y = H * (0.5 + Math.sin(t * 3.4) * 0.12)
-    ctx.fillStyle = col(0.38 + r() * 0.08, 0.01, hue, 0.85)
+    ctx.fillStyle = col(0.58 + r() * 0.08, 0.04, 90, 0.9)
     ctx.beginPath()
     ctx.ellipse(x, y, 26 + r() * 10, 15 + r() * 6, (r() - 0.5) * 0.6, 0, 6.3)
     ctx.fill()
@@ -135,7 +135,7 @@ function garden(w: World, ctx: CanvasRenderingContext2D, hue: number) {
     if (Math.hypot(dx, dy) < Math.min(W, H) * 0.14) continue
     const sway = Math.sin(w.t * 0.6 * w.motion + p.p) * 6 * p.s + w.gust * w.gustDir * 26 * p.s
     const hgt = 70 * p.s
-    ctx.strokeStyle = col(0.3, 0.05, 140, 0.9)
+    ctx.strokeStyle = col(0.42, 0.11, 140, 0.95)
     ctx.lineWidth = 2.2 * p.s
     ctx.beginPath()
     ctx.moveTo(p.x, p.y)
@@ -145,14 +145,14 @@ function garden(w: World, ctx: CanvasRenderingContext2D, hue: number) {
       const f = k / 5
       const lx = p.x + sway * f * f
       const ly = p.y - hgt * f
-      ctx.fillStyle = col(0.27 + 0.1 * f, 0.06, 135 + k * 6, 0.92)
+      ctx.fillStyle = col(0.42 + 0.16 * f, 0.15, 125 + k * 12 + p.p * 6, 0.95)
       ctx.beginPath()
       ctx.ellipse(lx + (k % 2 ? 11 : -11) * p.s, ly, 12 * p.s, 5 * p.s, (k % 2 ? -0.5 : 0.5) + sway * 0.02, 0, 6.3)
       ctx.fill()
     }
   }
   // a low fence along the far side
-  ctx.strokeStyle = col(0.2, 0.02, 60, 0.9)
+  ctx.strokeStyle = col(0.38, 0.07, 60, 0.95)
   ctx.lineWidth = 3
   for (let y = H * 0.12; y < H * 0.92; y += 46) {
     ctx.beginPath()
@@ -173,14 +173,17 @@ function shore(w: World, ctx: CanvasRenderingContext2D, hue: number) {
   const sea = H * 0.68
   // sky
   const sky = ctx.createLinearGradient(0, 0, 0, horizon)
-  sky.addColorStop(0, col(0.14, 0.03, hue))
-  sky.addColorStop(1, col(0.3, 0.05, hue - 10))
+  // dusk: indigo overhead, rose where the sky meets the water
+  sky.addColorStop(0, col(0.3, 0.1, 275))
+  sky.addColorStop(0.7, col(0.5, 0.13, 335))
+  sky.addColorStop(1, col(0.74, 0.12, 40))
   ctx.fillStyle = sky
   ctx.fillRect(0, 0, W, horizon)
   // water
   const water = ctx.createLinearGradient(0, horizon, 0, sea)
-  water.addColorStop(0, col(0.26, 0.05, hue))
-  water.addColorStop(1, col(0.38, 0.04, hue))
+  water.addColorStop(0, col(0.5, 0.11, 25))
+  water.addColorStop(0.35, col(0.4, 0.1, 275))
+  water.addColorStop(1, col(0.48, 0.09, hue))
   ctx.fillStyle = water
   ctx.fillRect(0, horizon, W, sea - horizon)
   ctx.lineWidth = 1.2
@@ -197,7 +200,7 @@ function shore(w: World, ctx: CanvasRenderingContext2D, hue: number) {
     ctx.stroke()
   }
   // sand, and a line of foam where the water ends
-  ctx.fillStyle = col(0.46, 0.025, 75)
+  ctx.fillStyle = col(0.66, 0.07, 70)
   ctx.fillRect(0, sea, W, H - sea)
   ctx.strokeStyle = col(0.92, 0.01, hue, 0.35)
   ctx.lineWidth = 2
@@ -209,7 +212,7 @@ function shore(w: World, ctx: CanvasRenderingContext2D, hue: number) {
   }
   ctx.stroke()
   // marks in the sand
-  ctx.fillStyle = col(0.36, 0.02, 70, 0.5)
+  ctx.fillStyle = col(0.5, 0.06, 55, 0.5)
   for (let i = 0; i < 60; i++) {
     ctx.beginPath()
     ctx.ellipse(r() * W, sea + 20 + r() * (H - sea - 20), 3 + r() * 9, 1.5 + r() * 2.5, 0, 0, 6.3)
