@@ -214,7 +214,7 @@ export default function App() {
               }
             }}
           >
-            <input id="desk-note" autoFocus value={draft} onChange={(e) => setDraft(e.target.value.slice(0, MAX_LEN))} placeholder="leave a line for whoever comes next" maxLength={MAX_LEN} aria-label="A note to pin" />
+            <input id="desk-note" autoFocus value={draft} onChange={(e) => setDraft(e.target.value.slice(0, MAX_LEN))} placeholder="leave a line" maxLength={MAX_LEN} aria-label="A note to pin" />
             <button type="submit" disabled={!draft.trim()}>
               {pinned ? 'pinned' : 'pin it'}
             </button>

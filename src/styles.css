@@ -51,7 +51,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 @media (prefers-reduced-motion: reduce) { .choose { animation: none; } }
 
 /* a real window, and the desk */
-.portal, .desk { position: absolute; z-index: 20; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; padding: 2rem 2rem 1.6rem; border-radius: 18px; background: oklch(0.2 0.03 230 / 0.94); backdrop-filter: blur(14px); color: oklch(0.96 0.02 220); box-shadow: 0 20px 80px oklch(0 0 0 / 0.5); animation: rise .9s ease both; }
+.portal, .desk { position: absolute; z-index: 20; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 2rem 2rem 1.6rem; border-radius: 18px; background: oklch(0.2 0.03 230 / 0.94); backdrop-filter: blur(14px); color: oklch(0.96 0.02 220); box-shadow: 0 20px 80px oklch(0 0 0 / 0.5); animation: rise .9s ease both; }
 @keyframes rise { from { opacity: 0; transform: translate(-50%, -46%); } }
 .portal-kicker { font-family: var(--grotesk, inherit); font-size: .75rem; letter-spacing: .3em; text-transform: uppercase; opacity: .7; margin: 0 0 .6rem; }
 .portal h2, .desk h2 { margin: 0 0 .5rem; font-family: "Bricolage Grotesque Variable", sans-serif; font-weight: 700; font-size: clamp(1.8rem, 5vw, 2.6rem); line-height: 1.05; }
@@ -73,3 +73,13 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .slips li:hover button, .slips li button:focus-visible { opacity: .9; }
 .slips li.empty { background: transparent; color: inherit; opacity: .6; font-style: italic; }
 .desk .leave { margin: 0; }
+/* small screens: the desk sits at the top so the keyboard does not cover it, and buttons are finger-sized */
+@media (max-width: 600px) {
+  .desk { top: 16px; left: 16px; width: calc(100vw - 32px); transform: none; animation: none; padding: 1.4rem 1.2rem 1.2rem; }
+  .slips { max-height: 34dvh; }
+  .slips li { align-items: center; padding-block: .25rem .25rem; }
+  .portal { padding: 1.6rem 1.3rem 1.3rem; }
+  .portal .notyet, .desk .leave, .slips li button { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  .desk form button { min-height: 44px; }
+  .portal a.begin { font-size: clamp(1.8rem, 9vw, 2.4rem); }
+}
