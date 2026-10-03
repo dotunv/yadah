@@ -1,56 +1,102 @@
-import { AnimatePresence } from 'framer-motion'
-import { useEffect } from 'react'
-import { Ambient } from './components/Ambient'
-import { Cursor } from './components/Cursor'
-import { Debug } from './components/Debug'
-import { Field } from './components/Field'
-import { Beacon, ChangeToast, FirstHint, Welcome } from './components/Overlays'
-import { Reveal } from './components/Reveal'
-import { Stage } from './components/Stage'
-import { useStore } from './store'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { Brain } from './brain'
+import { Debug } from './Debug'
+import { ENTITIES } from './engine/entities'
+import { World, type Phase } from './world/World'
 
+const brain = new Brain()
+let loading: Promise<void> | null = null
+const load = () => (loading ??= brain.load())
+
+/** Mount point only. The room is a canvas; its life is in world/ and engine/. */
 export default function App() {
-  const init = useStore((s) => s.init)
-  const phase = useStore((s) => s.phase)
-  const open = useStore((s) => s.open)
-  const ui = useStore((s) => s.ui)
-  const debug = useStore((s) => s.debug)
-  const toggleDebug = useStore((s) => s.toggleDebug)
+  const canvas = useRef<HTMLCanvasElement>(null)
+  const [world, setWorld] = useState<World | null>(null)
+  const [phase, setPhase] = useState<Phase>('world')
+  const [awaiting, setAwaiting] = useState(false)
+  const [beacon, setBeacon] = useState(false)
+  const [live, setLive] = useState('')
+  const [debug, setDebug] = useState(false)
+  const [confirm, setConfirm] = useState(false)
 
   useEffect(() => {
-    void init()
-  }, [init])
+    let w: World | null = null
+    let dead = false
+    void (async () => {
+      await load()
+      await Promise.all([
+        document.fonts.load('italic 24px Alegreya'),
+        document.fonts.load('800 100px "Bricolage Grotesque Variable"'),
+      ]).catch(() => undefined)
+      if (dead || !canvas.current) return
+      w = new World(canvas.current, brain, { whisper: setLive, phase: setPhase, awaiting: setAwaiting, beacon: setBeacon })
+      setWorld(w)
+      ;(window as unknown as { yadah: unknown }).yadah = { world: w, brain }
+    })()
+    return () => {
+      dead = true
+      w?.destroy()
+    }
+  }, [])
 
   useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === '`' && toggleDebug()
+    const k = (e: KeyboardEvent) => {
+      if (e.key === '`') setDebug((d) => !d)
+      if (e.key === 'Enter' && awaiting && world) {
+        e.preventDefault()
+        world.release()
+      }
+    }
     addEventListener('keydown', k)
     return () => removeEventListener('keydown', k)
-  }, [toggleDebug])
+  }, [awaiting, world])
 
-  // InterfaceState → CSS. Components never compute these.
-  useEffect(() => {
-    const r = document.documentElement.style
-    r.setProperty('--hue', String(Math.round(ui.hue)))
-    r.setProperty('--chroma', ui.chroma.toFixed(3))
-    r.setProperty('--dur', String(ui.motion.duration))
-    r.setProperty('--type-size', `${ui.type.size}px`)
-    r.setProperty('--type-leading', String(ui.type.leading))
-    r.setProperty('--type-measure', `${ui.type.measure}ch`)
-  }, [ui])
+  useSyncExternalStore(
+    (cb) => brain.subscribe(cb),
+    () => brain.profile.updatedAt,
+  )
 
   return (
-    <div className="app" data-phase={phase} data-mode={ui.mode}>
-      <Ambient />
-      {phase !== 'boot' && <Field />}
-      <AnimatePresence>{open && <Stage key={open.id} open={open} />}</AnimatePresence>
-      <Beacon />
-      <FirstHint />
-      <ChangeToast />
-      <AnimatePresence>{(phase === 'reveal' || phase === 'transform') && <Reveal key="reveal" />}</AnimatePresence>
-      <Welcome />
-      {debug && <Debug />}
-      <Cursor />
+    <div className="room" data-phase={phase}>
+      <canvas ref={canvas} className="world" aria-label="A dark room with seven presences in it. Move the light, or use the arrow keys." />
       <div className="grain" aria-hidden />
+
+      <nav className="sr" aria-label="Presences in the room">
+        {ENTITIES.map((e) => (
+          <button key={e.id} onFocus={() => world?.focusEntity(e.id)} onBlur={() => world?.focusEntity(null)} onClick={() => world?.touchEntity(e.id)}>
+            {e.name}
+          </button>
+        ))}
+        {beacon && <button onClick={() => world?.startReveal()}>Yadah has something to tell you</button>}
+      </nav>
+      <div className="sr" aria-live="polite">
+        {live}
+      </div>
+
+      {awaiting && (
+        <div className="choose">
+          <button className="begin" onClick={() => world?.release()} autoFocus>
+            begin
+          </button>
+          <button className="notyet" onClick={() => world?.cancelReveal()}>
+            not yet
+          </button>
+        </div>
+      )}
+
+      <div className="forget">
+        {confirm ? (
+          <>
+            <span>forget everything I know about you?</span>
+            <button onClick={() => void brain.forget()}>yes</button>
+            <button onClick={() => setConfirm(false)}>no</button>
+          </>
+        ) : (
+          <button onClick={() => setConfirm(true)}>forget me</button>
+        )}
+      </div>
+
+      {debug && <Debug brain={brain} world={world} />}
     </div>
   )
 }

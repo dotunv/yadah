@@ -9,7 +9,7 @@ import type { Profile } from './types'
 const DB = 'yadah'
 const STORE = 'kv'
 const KEY = 'profile'
-const LS_KEY = 'yadah:profile'
+const LS_KEY = 'yadah:v2'
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -60,7 +60,7 @@ function lsGet(): Profile | undefined {
 }
 
 const valid = (p: unknown): p is Profile =>
-  !!p && typeof p === 'object' && (p as Profile).version === 1 && typeof (p as Profile).traits === 'object'
+  !!p && typeof p === 'object' && (p as Profile).version === 2 && typeof (p as Profile).entities === 'object'
 
 export async function loadProfile(): Promise<Profile | undefined> {
   const [a, b] = await Promise.all([idbGet().catch(() => undefined), Promise.resolve(lsGet())])

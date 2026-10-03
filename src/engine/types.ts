@@ -1,57 +1,80 @@
 /**
- * Shared vocabulary of the behavioral engine.
- * Nothing in /engine imports React, the DOM-bound UI, or the store.
+ * The vocabulary of Yadah's inner life.
+ *
+ *   behavior → observation → interpretation → memory → relationship → world
+ *
+ * Nothing in /engine imports React or touches the DOM (tracker.ts aside).
  */
 
-export const TRAITS = [
-  'visual_interest',
-  'reading_interest',
-  'exploration_level',
-  'interaction_speed',
-  'keyboard_preference',
-  'repeat_interest',
-  'animation_preference',
-] as const
+export const ENTITY_IDS = ['listener', 'wanderer', 'mirror', 'archivist', 'stranger', 'witness', 'seed'] as const
+export type EntityId = (typeof ENTITY_IDS)[number]
 
-export type TraitKey = (typeof TRAITS)[number]
-export type Traits = Record<TraitKey, number>
+export const HYP_IDS = ['stillness', 'pursuit', 'return', 'offpath', 'patience', 'hands'] as const
+export type HypId = (typeof HYP_IDS)[number]
 
-export type Kind = 'visual' | 'reading' | 'interactive'
-
-export interface ObjectStat {
-  opens: number
+/** What the world remembers about one entity's relationship with this person. */
+export interface Memory {
+  /** 0..1 — how close they have become. */
+  bond: number
   dwellMs: number
-  seen: number
-  lastOpened: number
-  maxDepth: number
-  skips: number
-  reads: number
+  touches: number
+  completions: number
+  firstMet: number
+  lastTouched: number
+  /** Seconds spent chasing it. */
+  chased: number
+  /** 0..1 — how wary it is of you (strangers especially). */
+  wary: number
+  /** 0..1 — the seed's growth. */
+  growth: number
+  /** Visits in a row without being touched. */
+  neglect: number
+  touchedThisVisit: boolean
 }
 
-export interface InputCounts {
-  key: number
-  click: number
-  hover: number
-  drag: number
-  wheel: number
+/** A place where the lamp lingered. Memory made physical. */
+export interface Mark {
+  x: number
+  y: number
+  visit: number
+  /** 0..1 — how long the lamp stayed. */
+  w: number
+  /** The entity nearest when it happened, if any. */
+  e: EntityId | null
 }
 
-/** The persisted behavioral profile. */
+export type HypStatus = 'unformed' | 'forming' | 'held' | 'revised'
+
+/** A guess Yadah is making about this person. It can be wrong. */
+export interface Hyp {
+  support: number
+  contra: number
+  status: HypStatus
+  /** Times the hypothesis was held and then abandoned. */
+  revisions: number
+  lastRevisedAt: number
+}
+
+export interface Revision {
+  hyp: HypId
+  at: number
+  visit: number
+}
+
 export interface Profile {
-  version: 1
+  version: 2
   createdAt: number
   updatedAt: number
-  sessions: number
-  traits: Traits
-  /** Monotonic measure of how much behavior has been observed. */
-  evidence: number
-  objects: Record<string, ObjectStat>
-  kindDwell: Record<Kind, number>
-  inputs: InputCounts
+  visits: number
+  entities: Record<EntityId, Memory>
+  hyps: Record<HypId, Hyp>
+  marks: Mark[]
+  revisions: Revision[]
+  /** 0 (slow, careful) .. 1 (quick) — an exponential average of lamp pace. */
+  pace: number
+  inputs: { key: number; click: number; move: number }
   activeMs: number
-  lastSessionMs: number
-  /** Id of the object the user spent the longest with, ever. */
-  favorite?: string
+  lastVisitAt: number
   revealed: boolean
   revealedAt?: number
 }
@@ -59,71 +82,33 @@ export interface Profile {
 /** Volatile, per-visit state. Never persisted. */
 export interface Session {
   startedAt: number
-  opens: number
-  openedIds: string[]
-  prevId: string | null
+  touched: EntityId[]
+  probes: number
   activeMs: number
-  ignoredTicks: Record<Kind, number>
-  discovered: string[]
 }
 
-export type Signal =
-  | { t: 'seen'; id: string }
-  | { t: 'hover'; id: string; ms: number }
-  | { t: 'open'; id: string; via: 'pointer' | 'key' }
-  | { t: 'close'; id: string; dwellMs: number; depth: number; read: number }
-  | { t: 'inside'; id: string; kind: 'click' | 'drag' | 'key' | 'move' }
-  | { t: 'input'; kind: keyof InputCounts }
-  | { t: 'pointer'; avgSpeed: number; pauseRatio: number; turns: number }
+export type Obs =
+  | { t: 'dwell'; id: EntityId; ms: number; still: number }
+  | { t: 'touch'; id: EntityId; rank: number; via: 'pointer' | 'key' }
+  | { t: 'chase'; id: EntityId; ms: number }
+  | { t: 'slip'; id: EntityId }
+  | { t: 'complete'; id: EntityId }
+  | { t: 'leave'; id: EntityId; ms: number }
+  | { t: 'mark'; mark: Omit<Mark, 'visit'> }
+  | { t: 'input'; kind: 'key' | 'click' | 'move' }
+  | { t: 'pace'; speed: number }
   | { t: 'active'; ms: number }
-  | { t: 'discover'; id: string }
+  | { t: 'probe'; hyp: HypId; engaged: boolean }
 
-export interface Nudge {
-  trait: TraitKey
-  /** Value in [0,1] the trait is pulled toward. */
-  target: number
-  /** Relative strength of the pull, usually 0..1. */
-  weight: number
-}
+/** A notable thing that happened inside Yadah's understanding. */
+export type Interp =
+  | { type: 'held'; hyp: HypId }
+  | { type: 'revised'; hyp: HypId }
+  | { type: 'unformed'; hyp: HypId }
 
-export interface Delta {
-  trait: TraitKey
+export interface Change {
+  key: string
   from: number
   to: number
-  rule: string
-}
-
-export interface ObjectMeta {
-  id: string
-  title: string
-  kind: Kind
-  /** The "obvious path": the order the site suggests. */
-  order: number
-  hidden: boolean
-  /** Normalised position in the neutral world, 0..1. */
-  at: [number, number]
-}
-
-/** Everything the visual layer needs; produced from a Profile by adapt.ts. */
-export interface InterfaceState {
-  /** 0..1 — how much of the learned profile is currently expressed. */
-  applied: number
-  confidence: number
-  mode: 'neutral' | 'immersive' | 'editorial'
-  dominant: Kind | null
-  scale: Record<Kind, number>
-  chroma: number
-  hue: number
-  /** -1 summary only, 0 neutral, 1 extended, 2 dense with marginalia. */
-  textDepth: -1 | 0 | 1 | 2
-  type: { size: number; leading: number; measure: number; columns: 1 | 2 }
-  spatial: boolean
-  spread: number
-  hiddenVisible: boolean
-  keyboard: { hints: boolean; numberKeys: boolean; ring: number }
-  motion: { duration: number; ambient: number; parallax: number; trails: boolean; quiet: boolean }
-  /** Objects pulled toward the centre because the user keeps coming back. */
-  surfaced: Record<string, number>
-  /** Pull of each kind toward/away from centre (+ = toward). */
-  kindPull: Record<Kind, number>
+  why: string
 }
