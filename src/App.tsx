@@ -207,11 +207,12 @@ export default function App() {
           <form
             onSubmit={(e) => {
               e.preventDefault()
-              if (board.pin(draft)) {
+              void board.pin(draft).then((ok) => {
+                if (!ok) return
                 setDraft('')
                 setPinned(true)
                 setTimeout(() => setPinned(false), 1800)
-              }
+              })
             }}
           >
             <input id="desk-note" autoFocus value={draft} onChange={(e) => setDraft(e.target.value.slice(0, MAX_LEN))} placeholder="leave a line" maxLength={MAX_LEN} aria-label="A note to pin" />
@@ -223,9 +224,15 @@ export default function App() {
             {board.visible().map((n) => (
               <li key={n.id} data-hand={n.hand}>
                 <span>{n.text}</span>
-                <button onClick={() => board.hide(n.id)} aria-label="Hide this note for me" title="hide for me">
-                  ×
-                </button>
+                {board.isMine(n.id) ? (
+                  <button className="down" onClick={() => void board.takeDown(n.id)} aria-label="Take this note down for everyone" title="take down for everyone">
+                    take down
+                  </button>
+                ) : (
+                  <button onClick={() => board.hide(n.id)} aria-label="Hide this note for me" title="hide for me">
+                    ×
+                  </button>
+                )}
               </li>
             ))}
             {!board.visible().length && <li className="empty">nothing pinned yet. be the first.</li>}

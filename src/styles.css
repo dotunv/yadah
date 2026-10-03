@@ -83,3 +83,5 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   .desk form button { min-height: 44px; }
   .portal a.begin { font-size: clamp(1.8rem, 9vw, 2.4rem); }
 }
+
+.slips li button.down { font-size: .8rem; font-style: italic; opacity: .6; white-space: nowrap; text-decoration: underline; }
