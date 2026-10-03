@@ -56,6 +56,8 @@ export function Debug({ brain, world }: { brain: Brain; world: World | null }) {
           “{m.text}” <span className={m.corrected ? 'st held' : ''}>{m.corrected ? 'corrected by you' : 'uncorrected'}</span>
         </div>
       ))}
+      <h4>story</h4>
+      <div>chapters told: {p.chapters.join(', ') || 'none'} · ended {String(p.ended)} · ending ready {String(brain.endingReady())}</div>
       <h4>time</h4>
       <div>
         hour {brain.hour().toFixed(1)}{brain.hourOverride !== null ? ' (pretend)' : ''} · night {brain.night().toFixed(2)}{world?.asleep ? ' · asleep' : ''} · days away {brain.away.toFixed(1)}
@@ -79,6 +81,7 @@ export function Debug({ brain, world }: { brain: Brain; world: World | null }) {
       </div>
       <div className="pbtns" style={{ marginTop: 8 }}>
         <button onClick={() => world?.startReveal()}>reveal now</button>
+        <button onClick={() => world?.playEnding()}>play the ending</button>
         <button onClick={() => void brain.forget()}>forget everything</button>
       </div>
       <h4>just now</h4>

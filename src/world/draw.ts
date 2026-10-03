@@ -113,6 +113,7 @@ export function render(w: World) {
   drawGhost(w, ctx)
   drawVigil(w, ctx)
   drawWhispers(w, ctx)
+  drawTitles(w, ctx)
   drawReveal(w, ctx)
   drawShock(w, ctx)
   drawLamp(w, ctx)
@@ -138,7 +139,7 @@ function drawWordmark(w: World, ctx: CanvasRenderingContext2D) {
     const dy = (r() - 0.5) * size * 0.05 + Math.sin(w.t * 0.25 * w.motion + i) * 1.5 * w.motion
     w.letters[i] = { x: x + widths[i] / 2, y: base - size * 0.28 }
     // each letter fills in as Yadah takes you in, and flares when it notes something
-    const lit = clamp(w.letterPulse[i] * 0.9 + clamp(w.know * 5.5 - i) * 0.35)
+    const lit = clamp(w.letterPulse[i] * 0.9 + clamp(w.know * 5.5 - i) * (w.brain.profile.ended ? 0.85 : 0.35))
     ctx.save()
     ctx.translate(x + widths[i] / 2, base + dy)
     ctx.rotate(jit)
@@ -609,7 +610,7 @@ function drawDarkness(w: World, g: Gfx) {
     for (const m of w.brain.profile.marks) hole(c, m.x * W, m.y * H, 34, 0.55)
   }
   w.letters.forEach((p, i) => {
-    const a = w.letterPulse[i] * 0.55 + w.know * 0.18
+    const a = w.letterPulse[i] * 0.55 + w.know * (w.brain.profile.ended ? 0.45 : 0.18)
     if (a > 0.02) hole(c, p.x, p.y, Math.min(W, H) * 0.2, a)
   })
   if (w.beacon.vis > 0.01) hole(c, W * 0.5, H * 0.9, 110, 0.85 * w.beacon.vis)
@@ -837,6 +838,31 @@ function drawWhispers(w: World, ctx: CanvasRenderingContext2D) {
   }
 }
 
+/** A chapter heading, written across the floor, shown once. */
+function drawTitles(w: World, ctx: CanvasRenderingContext2D) {
+  for (const t of w.titles) {
+    const inn = ease(clamp((w.t - t.t0) / 1.8))
+    const out = ease(clamp((t.t0 + t.dur - w.t) / 2.4))
+    const a = Math.min(inn, out)
+    if (a <= 0.01) continue
+    const size = clamp(Math.min(w.w * 0.075, w.h * 0.13), 38, 120)
+    ctx.save()
+    ctx.globalAlpha = a * 0.9
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ;(ctx as unknown as { letterSpacing: string }).letterSpacing = `${(0.34 - 0.12 * inn).toFixed(2)}em`
+    ctx.shadowColor = 'rgba(0,0,0,.7)'
+    ctx.shadowBlur = 24
+    ctx.fillStyle = col(0.9, 0.02, w.atm.hue)
+    ctx.font = `700 ${size}px ${GROTESK}`
+    ctx.fillText(t.text.toUpperCase(), w.w / 2, w.h * 0.16)
+    ctx.font = `italic 400 ${Math.round(size * 0.34)}px ${SERIF}`
+    ctx.fillStyle = col(0.7, 0.03, 80)
+    ctx.fillText(t.roman, w.w / 2, w.h * 0.16 - size * 0.82)
+    ctx.restore()
+  }
+}
+
 function drawReveal(w: World, ctx: CanvasRenderingContext2D) {
   if (w.phase !== 'reveal' || !w.revealLines.length) return
   const size = clamp(w.w * 0.034, 22, 46)
@@ -847,9 +873,9 @@ function drawReveal(w: World, ctx: CanvasRenderingContext2D) {
   ctx.shadowColor = 'rgba(0,0,0,.85)'
   ctx.shadowBlur = 18
   w.revealLines.forEach((line, i) => {
-    const start = 2.2 + i * 3.4
+    const start = w.pace.start + i * w.pace.gap
     const inn = ease(clamp((w.revealT - start) / 1.6))
-    const latest = w.revealT < start + 3.4 || i === w.revealLines.length - 1
+    const latest = w.revealT < start + w.pace.gap || i === w.revealLines.length - 1
     ctx.globalAlpha = inn * (latest ? 1 : 0.5)
     ctx.fillStyle = col(0.93, 0.015, w.atm.hue)
     const lines = wrap(ctx, line, w.w * 0.82 - x)

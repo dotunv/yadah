@@ -2,11 +2,12 @@ import type { Brain } from '../brain'
 import { DEF, ENTITIES } from '../engine/entities'
 import { HYP, HYPS, confidence } from '../engine/hypotheses'
 import { MISREADS, misreadFor } from '../engine/misread'
+import { allParts, endingLines, farewellLines, firstPart, fragment, homeLine, thereYouAre } from '../engine/story'
 import { asleepLine, doubt, firstVisit, goneLine, husk, lateNight, outOfPractice, released, revealLines, say, wakeLine, welcome, wentDark } from '../engine/voice'
 import type { EntityId, HypId, Obs } from '../engine/types'
 import { render } from './draw'
 import { Sound } from './sound'
-import { clamp, ease, lerp, rngOf, type Ent, type Enc, type Lamp, type Mote, type Speck, type Whisper } from './scene'
+import { clamp, ease, lerp, rngOf, type Ent, type Enc, type Lamp, type Mote, type Speck, type Title, type Whisper } from './scene'
 
 export type Phase = 'world' | 'reveal' | 'release'
 
@@ -43,6 +44,12 @@ export class World {
   reduced = false
   focus: EntityId | null = null
   motes: Mote[] = []
+  titles: Title[] = []
+  /** What the reveal-style text is for. */
+  script: 'reveal' | 'ending' | 'farewell' = 'reveal'
+  /** When the first line of a script appears and how long each is given. */
+  pace = { start: 2.2, gap: 3.4 }
+  private farewellDone?: () => void
   /** Where each letter of the floor wordmark sits, written by the renderer. */
   letters: { x: number; y: number }[] = []
   letterPulse = [0, 0, 0, 0, 0]
@@ -144,10 +151,15 @@ export class World {
     this.night = this.brain.night()
     const sleeping = this.night > 0.9
     const y = this.h * 0.4
+    const ch = this.brain.chapter()
+    if (ch) {
+      this.titles.push({ text: ch.title, roman: ch.roman, t0: 0.8, dur: 6.5 })
+      this.brain.observe({ t: 'chapter', chapter: ch.id })
+    }
     if (this.brain.returning) {
       const [a, b] = welcome()
-      this.say(a, this.w * 0.09, y, { t0: 1.2, dur: 6, size: 54 })
-      this.say(this.brain.away > 6 ? outOfPractice : b, this.w * 0.09, y + 56, { t0: 3.6, dur: 7, size: 30 })
+      this.say(this.brain.profile.ended ? homeLine : a, this.w * 0.09, y, { t0: 1.4, dur: 6, size: 54 })
+      this.say(this.brain.away > 6 ? outOfPractice : b, this.w * 0.09, y + 56, { t0: 3.8, dur: 7, size: 30 })
     } else {
       this.say(firstVisit, this.w * 0.09, y, { t0: 3, dur: 7, size: 34 })
     }
@@ -186,6 +198,7 @@ export class World {
         this.lamp.moved = true
         this.lamp.x = this.lamp.tx
         this.lamp.y = this.lamp.ty
+        if (!this.brain.returning && this.t > 2) this.say(thereYouAre, clamp(this.lamp.tx - 50, 20, this.w - 220), clamp(this.lamp.ty - 70, 40, this.h - 40), { t0: this.t + 0.5, dur: 4, size: 26 })
         if (this.brain.returning) this.meet = { x: this.lamp.tx, y: this.lamp.ty, until: this.t + 9 }
       }
       this.lamp.lastMoveAt = this.t
@@ -497,8 +510,14 @@ export class World {
         this.endVigil()
         this.obs({ t: 'complete', id: enc.id })
         this.sound.chime(enc.id)
-        if (this.brain.session.touched.length < 3) this.nudge('others', 'there are others.', this.w * 0.5, this.h * 0.14, 3)
-        this.whisperAt(e, say(enc.id, this.brain.profile.entities[enc.id], 'done'))
+        if (this.brain.session.touched.length < 3) this.nudge('others', 'there are others.', this.w * 0.5 - 90, this.h * 0.14, 14)
+        const prof = this.brain.profile
+        this.whisperAt(e, fragment(enc.id, prof.entities[enc.id].completions) ?? say(enc.id, prof.entities[enc.id], 'done'))
+        // the first time, and the third: Yadah says what these are
+        const done = ENTITIES.filter((d) => prof.entities[d.id].completions > 0).length
+        const total = ENTITIES.reduce((n, d) => n + prof.entities[d.id].completions, 0)
+        if (total === 1) this.say(firstPart, clamp(e.x - 140, 20, this.w - 360), clamp(e.y + e.r * e.scale * 2.2, 60, this.h - 40), { t0: this.t + 5.5, dur: 6, size: 24 })
+        else if (done === 3 && prof.entities[enc.id].completions === 1) this.say(allParts, clamp(e.x - 180, 20, this.w - 420), clamp(e.y + e.r * e.scale * 2.2, 60, this.h - 40), { t0: this.t + 5.5, dur: 7, size: 24 })
       }
     }
     this.tension = lerp(this.tension, enc.id === 'vigil' && !enc.leaving ? enc.p : 0, 1 - Math.exp(-dt * 3))
@@ -644,18 +663,60 @@ export class World {
     if (this.enc) this.enc.leaving = true
     this.phase = 'reveal'
     this.revealT = 0
-    this.revealLines = revealLines(this.brain.profile)
+    this.script = this.brain.endingReady() ? 'ending' : 'reveal'
+    this.pace = this.script === 'ending' ? { start: 2.4, gap: 3.1 } : { start: 2.2, gap: 3.4 }
+    this.revealLines = this.script === 'ending' ? endingLines(this.brain.profile) : revealLines(this.brain.profile)
     this.awaiting = false
     this.hooks.phase?.('reveal')
     this.hooks.awaiting?.(false)
   }
 
   cancelReveal() {
-    if (this.phase !== 'reveal') return
+    if (this.phase !== 'reveal' || this.script === 'farewell') return
     this.phase = 'world'
     this.beaconCooldown = this.t + 45
     this.hooks.phase?.('world')
     this.hooks.awaiting?.(false)
+  }
+
+  /** The ending and the farewell have no choice to make: they end, and the room carries on. */
+  private finishScript() {
+    if (this.script === 'ending') {
+      this.brain.observe({ t: 'end' })
+      this.phase = 'world'
+      this.hooks.phase?.('world')
+      this.sound.release()
+      for (let i = 0; i < 5; i++) this.letterPulse[i] = 1
+      for (const e of this.ents) e.pop = 0.25
+      this.say(homeLine, this.w * 0.09, this.h * 0.4, { t0: this.t + 0.8, dur: 9, size: 54 })
+    } else if (this.script === 'farewell') {
+      this.farewellDone?.()
+    }
+  }
+
+  /** Being forgotten is an ending too. Yadah says so, and means it. */
+  farewell(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.enc) this.enc.leaving = true
+      this.phase = 'reveal'
+      this.script = 'farewell'
+      this.pace = { start: 0.8, gap: 2.5 }
+      this.revealT = 0
+      this.revealLines = farewellLines
+      this.farewellDone = resolve
+      this.hooks.phase?.('reveal')
+    })
+  }
+
+  /** Play the ending now (debug). */
+  playEnding() {
+    if (this.phase !== 'world') return
+    this.phase = 'reveal'
+    this.script = 'ending'
+    this.pace = { start: 2.4, gap: 3.1 }
+    this.revealT = 0
+    this.revealLines = endingLines(this.brain.profile)
+    this.hooks.phase?.('reveal')
   }
 
   /** "Begin": the room finally rearranges itself around what it learned. */
@@ -758,12 +819,13 @@ export class World {
     if (this.phase === 'reveal') {
       this.revealT += dt
       const n = this.revealLines.length
-      const done = 2.2 + n * 3.4 + 1.2
-      const waiting = this.revealT > done
+      const done = this.pace.start + n * this.pace.gap + 1.2
+      const waiting = this.script === 'reveal' && this.revealT > done
       if (waiting !== this.awaiting) {
         this.awaiting = waiting
         this.hooks.awaiting?.(waiting)
       }
+      if (this.script !== 'reveal' && this.revealT > done + 3) this.finishScript()
     } else if (this.phase === 'release') {
       this.releaseT += dt
       if (this.releaseT > 5) {
@@ -823,7 +885,7 @@ export class World {
     const bonds = ENTITIES.reduce((a, d) => a + p.entities[d.id].bond, 0)
     const held = HYPS.filter((h) => p.hyps[h.id].status === 'held').length
     const know = clamp(bonds / 2.4 + held * 0.1 + Math.min(1, p.marks.length / 50) * 0.15)
-    this.know = lerp(this.know, know, 1 - Math.exp(-dt * 0.6))
+    this.know = lerp(this.know, p.ended ? 1 : know, 1 - Math.exp(-dt * 0.6))
 
     const prox = {} as Record<EntityId, number>
     const bond = {} as Record<EntityId, number>
@@ -880,7 +942,7 @@ export class World {
     const dl = Math.hypot(L.x - e.x, L.y - e.y)
     e.prox = lerp(e.prox, L.moved ? clamp(1 - dl / 560) : 0, 1 - Math.exp(-dt * 2))
     // things wake as the lamp comes near, and sleep again when it leaves
-    e.awake = lerp(e.awake, Math.max(it.awake, e.prox * 0.7), 1 - Math.exp(-dt * 0.9))
+    e.awake = lerp(e.awake, Math.max(it.awake, e.prox * 0.7, this.brain.profile.ended ? 0.55 : 0), 1 - Math.exp(-dt * 0.9))
     const sc = this.enc?.id === e.id ? (e.id === 'wanderer' ? 2 : 2.5) : 1
     e.scale = lerp(e.scale, it.scale * sc, 1 - Math.exp(-dt * (this.enc?.id === e.id ? 2.4 : 1.2)))
     e.rustle = lerp(e.rustle, 0, 1 - Math.exp(-dt * 1.5))
@@ -1203,7 +1265,7 @@ export class World {
   }
 
   private updateBeacon(dt: number) {
-    const ready = this.brain.ready() && this.phase === 'world' && this.t > this.beaconCooldown && !this.enc && !this.asleep
+    const ready = (this.brain.ready() || this.brain.endingReady()) && this.phase === 'world' && this.t > this.beaconCooldown && !this.enc && !this.asleep
     this.beacon.on = ready
     this.beacon.vis = lerp(this.beacon.vis, ready ? 1 : 0, 1 - Math.exp(-dt * 0.9))
     if (ready !== this.beaconWas) {

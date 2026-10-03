@@ -28,6 +28,8 @@ export function createProfile(now = Date.now()): Profile {
     marks: [],
     revisions: [],
     misreads: [],
+    chapters: [],
+    ended: false,
     pace: 0.5,
     inputs: { key: 0, click: 0, move: 0 },
     activeMs: 0,
@@ -54,7 +56,7 @@ export function migrate(p: Profile): Profile {
   for (const id of ENTITY_IDS) entities[id] = { ...blankMemory(), ...entities[id] }
   const hyps = { ...p.hyps }
   for (const id of HYP_IDS) hyps[id] = { ...blankHyp(), ...hyps[id] }
-  return { ...p, entities, hyps, misreads: p.misreads ?? [], marks: p.marks.map((mk) => ({ ...mk, life: mk.life ?? 1 })) }
+  return { ...p, entities, hyps, misreads: p.misreads ?? [], chapters: p.chapters ?? [], ended: !!p.ended, marks: p.marks.map((mk) => ({ ...mk, life: mk.life ?? 1 })) }
 }
 
 /** Days since the previous visit, for how out of practice Yadah is. */

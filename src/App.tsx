@@ -95,7 +95,14 @@ export default function App() {
         {confirm ? (
           <>
             <span>forget everything I know about you?</span>
-            <button onClick={() => void brain.forget()}>yes</button>
+            <button
+              onClick={() => {
+                setConfirm(false)
+                void (world ? world.farewell() : Promise.resolve()).then(() => brain.forget())
+              }}
+            >
+              yes
+            </button>
             <button onClick={() => setConfirm(false)}>no</button>
           </>
         ) : (

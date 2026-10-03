@@ -25,6 +25,24 @@ starts the reveal. Press **begin** and watch the room rearrange. Reload for the 
 Or explore for a few minutes. When Yadah has something to say, a small light appears at the bottom of
 the room. Hold the lamp over it.
 
+## The story
+
+*Yadah* is Hebrew for "to know", and for giving thanks with open hands. Yadah is a room that has been alone,
+trying to learn what it is to know someone. The eight presences are parts of Yadah, its ways of knowing:
+listening, following, mirroring, keeping, fearing, watching, growing, enduring. Nothing explains this up front.
+
+- **Fragments.** Each time you finish an encounter, that part of Yadah tells you something of where it came from
+  (four per presence, one per completion, in order). Taken together they say that someone was here before you,
+  that the room was left waiting, and that it frightened them. The stranger is who left.
+- **Chapters.** Each is written on the floor once: *I arrival*, *II return*, *III recognition*, *IV doubt* (when it
+  was wrong about you), *V absence* (after a long time away), *VI home*.
+- **An ending.** Back at least three times and close to five presences, a light appears again. Yadah finishes
+  the word: *"yadah. it means to know. I didn't know that when I began."* It says what happened between you
+  (even the stranger stayed, or one of us left and I understand why), the word on the floor lights fully, and from
+  then on it says *welcome home*.
+- **Forgetting is an ending too.** *forget me* plays a farewell (*"I won't remember you."*) and then actually does it.
+  Nothing is written on the way out.
+
 ## The idea
 
 ```

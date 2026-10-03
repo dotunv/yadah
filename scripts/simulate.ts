@@ -97,3 +97,34 @@ console.log(' stillness after being tested:', p.hyps.stillness.status, 'revision
   console.log('\n== misreading\n corrected:', p.misreads.map((m) => `${m.kind}:${m.corrected}`).join(' '), ' return support:', p.hyps.return.support)
   console.log(' reveal says:', revealLines({ ...p, hyps: { ...p.hyps, stillness: { ...p.hyps.stillness, support: 9, contra: 0 }, patience: { ...p.hyps.patience, support: 9, contra: 0 } } }).join(' / '))
 }
+
+// The story: fragments unlock one per completion, chapters are told once, the ending has to be earned.
+{
+  const { chapterFor, endingReady, endingLines, fragment } = await import('../src/engine/story')
+  let p = beginVisit(createProfile(0), 0)
+  let s = createSession(0)
+  const told: string[] = []
+  const open = (away = 0) => {
+    const c = chapterFor(p, away)
+    if (c) {
+      told.push(c.roman + ' ' + c.title)
+      ;({ profile: p } = step(p, s, { t: 'chapter', chapter: c.id }, 0))
+    }
+  }
+  open()
+  p = beginVisit(p, 1)
+  open()
+  p = { ...p, revealed: true }
+  p = beginVisit(p, 2)
+  open()
+  p = beginVisit(p, 3)
+  open(9)
+  console.log('\n== chapters over visits\n', told.join(' → '))
+  console.log(' listener fragments:', [1, 2, 3, 4, 5].map((n) => fragment('listener', n) ?? '(none left)').join(' | '))
+  const ids = ['listener', 'wanderer', 'mirror', 'archivist', 'seed'] as const
+  for (const id of ids) p.entities[id] = { ...p.entities[id], bond: 0.6, touches: 3 }
+  s = { ...s, touched: ['listener'] }
+  p = beginVisit(p, 4)
+  console.log(' ending ready (visit', p.visits + ', 5 close):', endingReady(p, s))
+  console.log(' ending says:', endingLines(p).join(' / '))
+}

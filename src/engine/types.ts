@@ -91,6 +91,10 @@ export interface Profile {
   marks: Mark[]
   revisions: Revision[]
   misreads: Misread[]
+  /** Chapters already shown. Each is told once. */
+  chapters: string[]
+  /** The story reached its end. */
+  ended: boolean
   /** 0 (slow, careful) .. 1 (quick) — an exponential average of lamp pace. */
   pace: number
   inputs: { key: number; click: number; move: number }
@@ -120,6 +124,8 @@ export type Obs =
   | { t: 'mark'; mark: Omit<Mark, 'visit' | 'life' | 'dead'> }
   | { t: 'renew'; index: number }
   | { t: 'prune' }
+  | { t: 'chapter'; chapter: string }
+  | { t: 'end' }
   | { t: 'misread'; misread: Omit<Misread, 'visit' | 'corrected'> }
   | { t: 'correct'; index: number; hyp: HypId }
   | { t: 'input'; kind: 'key' | 'click' | 'move' }

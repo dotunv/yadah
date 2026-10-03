@@ -60,6 +60,14 @@ export interface Whisper {
   tint: number
 }
 
+/** A chapter heading, written on the floor. */
+export interface Title {
+  text: string
+  roman: string
+  t0: number
+  dur: number
+}
+
 export interface Speck {
   x: number
   y: number

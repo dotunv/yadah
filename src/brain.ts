@@ -1,4 +1,5 @@
 import { heldBeliefs, readyToSpeak, step } from './engine/interpret'
+import { chapterFor, endingReady, type Chapter } from './engine/story'
 import { beginVisit, createProfile, createSession, daysAway, migrate } from './engine/memory'
 import { hourNow, night } from './engine/time'
 import { seedProfile, type Persona } from './engine/personas'
@@ -34,6 +35,8 @@ export class Brain {
   private saveTimer?: number
   private stopTracker?: () => void
   private lastNotify = 0
+  /** Once forgotten, nothing more is ever written, not even on the way out. */
+  private forgotten = false
 
   async load() {
     const loaded = await loadProfile()
@@ -49,6 +52,7 @@ export class Brain {
     this.save()
     this.stopTracker = startTracker((o) => this.observe(o)).stop
     const flush = () => {
+      if (this.forgotten) return
       saveProfileSync(this.profile)
       void saveProfile(this.profile)
     }
@@ -80,6 +84,14 @@ export class Brain {
     return night(this.hour())
   }
 
+  endingReady() {
+    return endingReady(this.profile, this.session)
+  }
+
+  chapter(): Chapter | null {
+    return chapterFor(this.profile, this.away)
+  }
+
   ready() {
     return readyToSpeak(this.profile, this.session)
   }
@@ -106,6 +118,7 @@ export class Brain {
 
   /** Debug: leave and come back after this many days, through the real path. */
   async timeTravel(days: number) {
+    this.forgotten = true // stop the exit flush from overwriting the shifted clock
     window.clearTimeout(this.saveTimer)
     const p = { ...this.profile, lastVisitAt: Date.now() - days * 86_400_000 }
     saveProfileSync(p)
@@ -114,6 +127,7 @@ export class Brain {
   }
 
   async forget() {
+    this.forgotten = true
     window.clearTimeout(this.saveTimer)
     this.stopTracker?.()
     await forgetProfile()
@@ -133,6 +147,7 @@ export class Brain {
   }
 
   private save() {
+    if (this.forgotten) return
     window.clearTimeout(this.saveTimer)
     this.saveTimer = window.setTimeout(() => void saveProfile(this.profile), 700)
   }
