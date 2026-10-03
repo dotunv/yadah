@@ -18,6 +18,13 @@ export default function App() {
   const [live, setLive] = useState('')
   const [debug, setDebug] = useState(false)
   const [confirm, setConfirm] = useState(false)
+  const [muted, setMuted] = useState(() => {
+    try {
+      return localStorage.getItem('yadah:sound') === 'off'
+    } catch {
+      return false
+    }
+  })
 
   useEffect(() => {
     let w: World | null = null
@@ -92,7 +99,19 @@ export default function App() {
             <button onClick={() => setConfirm(false)}>no</button>
           </>
         ) : (
-          <button onClick={() => setConfirm(true)}>forget me</button>
+          <>
+            <button
+              onClick={() => {
+                const next = !muted
+                setMuted(next)
+                world?.sound.setMuted(next)
+              }}
+              aria-pressed={!muted}
+            >
+              {muted ? 'sound off' : 'sound on'}
+            </button>
+            <button onClick={() => setConfirm(true)}>forget me</button>
+          </>
         )}
       </div>
 

@@ -107,6 +107,7 @@ export function render(w: World) {
   ctx.drawImage(g.dark, 0, 0, W, H)
 
   // ── things that are seen regardless of light ─────────────────────────
+  drawAir(w, ctx)
   drawSpecks(w, ctx)
   drawBeacon(w, ctx)
   drawGhost(w, ctx)
@@ -134,13 +135,16 @@ function drawWordmark(w: World, ctx: CanvasRenderingContext2D) {
   letters.forEach((c, i) => {
     const jit = (r() - 0.5) * 0.07
     const dy = (r() - 0.5) * size * 0.05 + Math.sin(w.t * 0.25 * w.motion + i) * 1.5 * w.motion
+    w.letters[i] = { x: x + widths[i] / 2, y: base - size * 0.28 }
+    // each letter fills in as Yadah takes you in, and flares when it notes something
+    const lit = clamp(w.letterPulse[i] * 0.9 + clamp(w.know * 5.5 - i) * 0.35)
     ctx.save()
     ctx.translate(x + widths[i] / 2, base + dy)
     ctx.rotate(jit)
     // pressed into the paper: a light edge and a dark body
     ctx.fillStyle = col(0.46, 0.01 + w.atm.chroma * 0.5, w.atm.hue, 0.5)
     ctx.fillText(c, -widths[i] / 2 + 1.5, 1.5)
-    ctx.fillStyle = col(0.3, 0.01 + w.atm.chroma * 0.5, w.atm.hue, 0.7)
+    ctx.fillStyle = col(0.3 + 0.38 * lit, 0.01 + w.atm.chroma * 0.5 + 0.03 * lit, lit > 0.05 ? 78 : w.atm.hue, 0.7 + 0.2 * lit)
     ctx.fillText(c, -widths[i] / 2, 0)
     ctx.restore()
     x += widths[i] + gap
@@ -462,6 +466,28 @@ function drawEntity(w: World, ctx: CanvasRenderingContext2D, e: Ent) {
     }
   }
   noShadow()
+  // signs of life, even when nobody is looking
+  if (e.id === 'listener' && !enc) {
+    for (let k = 0; k < 2; k++) {
+      const ph = ((w.t * 0.14 + k * 0.5 + e.phase * 0.05) % 1)
+      ctx.strokeStyle = col(0.8, 0.03 + 0.1 * mem.bond, e.def.hue, (1 - ph) * 0.28 * ease(e.appear))
+      ctx.lineWidth = 1.2
+      ctx.beginPath()
+      ctx.arc(0, 0, R * (1.05 + ph * 1.6), 0, 6.3)
+      ctx.stroke()
+    }
+  }
+  // a quiet invitation: something you haven't met breathes a ring when you come near
+  if (mem.touches === 0 && e.prox > 0.25 && !enc && e.appear > 0.9) {
+    const br = 0.5 + 0.5 * Math.sin(w.t * 2.2 + e.phase)
+    ctx.setLineDash([3, 6])
+    ctx.strokeStyle = col(0.9, 0.04, 80, (0.15 + 0.3 * br) * e.prox)
+    ctx.lineWidth = 1.2
+    ctx.beginPath()
+    ctx.arc(0, 0, R * 1.5 + 6 + 4 * br, 0, 6.3)
+    ctx.stroke()
+    ctx.setLineDash([])
+  }
   // a faint ring when something is tempting you, so that the world is not all hidden
   void accSoft
   ctx.restore()
@@ -500,13 +526,14 @@ function drawDarkness(w: World, g: Gfx) {
   c.setTransform(dpr, 0, 0, dpr, 0, 0)
   c.globalCompositeOperation = 'source-over'
   c.clearRect(0, 0, W, H)
-  c.fillStyle = col(0.075, 0.006 + w.atm.chroma * 0.4, w.atm.hue, clamp(0.8 + 0.12 * w.dim + 0.06 * w.hush))
+  c.fillStyle = col(0.075, 0.006 + w.atm.chroma * 0.4, w.atm.hue, clamp(0.74 + 0.18 * w.dim + 0.08 * w.hush))
   c.fillRect(0, 0, W, H)
   c.globalCompositeOperation = 'destination-out'
 
   const base = (190 + Math.min(W, H) * 0.19) * w.atm.lamp
   const bell = w.phase === 'release' ? Math.sin(Math.PI * clamp(w.releaseT / 3)) : 0
-  const R = base * (1 - 0.22 * w.dim - 0.55 * w.hush) * (1 + 3.2 * bell)
+  const lit = ease(clamp(w.ignite)) * (w.ignite < 1 ? 0.82 + 0.18 * Math.sin(w.t * 31) * Math.sin(w.t * 17) : 1)
+  const R = base * (1 - 0.22 * w.dim - 0.55 * w.hush) * (1 + 3.2 * bell) * lit
   hole(c, w.lamp.x, w.lamp.y, R, 1)
 
   for (const e of w.ents) {
@@ -526,20 +553,82 @@ function drawDarkness(w: World, g: Gfx) {
   if (w.enc?.id === 'archivist') {
     for (const m of w.brain.profile.marks) hole(c, m.x * W, m.y * H, 34, 0.55)
   }
+  w.letters.forEach((p, i) => {
+    const a = w.letterPulse[i] * 0.55 + w.know * 0.18
+    if (a > 0.02) hole(c, p.x, p.y, Math.min(W, H) * 0.2, a)
+  })
   if (w.beacon.vis > 0.01) hole(c, W * 0.5, H * 0.9, 110, 0.85 * w.beacon.vis)
   c.globalCompositeOperation = 'source-over'
 }
 
 // ───────────────────────────── light that is always seen ─────────────────────────────
 
+/** Dust in the lamp, and the faint aura of anything that is awake. */
+function drawAir(w: World, ctx: CanvasRenderingContext2D) {
+  const L = w.lamp
+  const R = (190 + Math.min(w.w, w.h) * 0.19) * w.atm.lamp * ease(clamp(w.ignite)) * (1 - 0.55 * w.hush)
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  for (const e of w.ents) {
+    if (e.appear < 0.2) continue
+    const mem = w.brain.profile.entities[e.id]
+    const a = (0.05 + 0.22 * e.awake) * e.appear * (1 - 0.7 * w.hush)
+    const r = e.r * e.scale * (2.2 + 0.4 * Math.sin(e.phase))
+    const g = ctx.createRadialGradient(e.x, e.y, e.r * e.scale * 0.6, e.x, e.y, r)
+    g.addColorStop(0, col(0.8, 0.012 + 0.16 * mem.bond, e.def.hue, a))
+    g.addColorStop(1, col(0.6, 0.01, e.def.hue, 0))
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.arc(e.x, e.y, r, 0, 6.3)
+    ctx.fill()
+    // arriving: a ring leaves it, once
+    const ta = w.t - e.appearAt
+    if (ta > 0 && ta < 2.6) {
+      const q = ta / 2.6
+      ctx.strokeStyle = col(0.9, 0.05, e.def.hue, (1 - q) * 0.5)
+      ctx.lineWidth = 1.4
+      ctx.beginPath()
+      ctx.arc(e.x, e.y, e.r * e.scale * (1.2 + q * 3.2), 0, 6.3)
+      ctx.stroke()
+    }
+  }
+  for (const m of w.motes) {
+    const d = Math.hypot(m.x - L.x, m.y - L.y)
+    let a = clamp(1 - d / (R * 0.95)) * 0.5
+    // dust also catches the glow of the things that are awake
+    for (const e of w.ents) {
+      const de = Math.hypot(m.x - e.x, m.y - e.y)
+      const ra = e.r * e.scale * 3.2
+      if (de < ra) a = Math.max(a, (1 - de / ra) * 0.3 * e.awake)
+    }
+    if (a < 0.03) continue
+    ctx.fillStyle = col(0.9, 0.04, 80, a * m.z)
+    ctx.beginPath()
+    ctx.arc(m.x, m.y, 0.6 + m.z * 1.1, 0, 6.3)
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
 function drawSpecks(w: World, ctx: CanvasRenderingContext2D) {
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const s of w.specks) {
-    ctx.fillStyle = col(0.9, 0.06, 70, 0.7)
+    const age = clamp((w.t - s.t0) / 1.6)
+    const word = s.to === 'word'
+    ctx.fillStyle = col(0.92, 0.07, 78, (word ? 0.95 : 0.7) * (1 - age * 0.3))
     ctx.beginPath()
-    ctx.arc(s.x, s.y, 2.2, 0, 6.3)
+    ctx.arc(s.x, s.y, word ? 3 : 2.2, 0, 6.3)
     ctx.fill()
+    if (word) {
+      const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 18)
+      g.addColorStop(0, col(0.9, 0.07, 78, 0.35))
+      g.addColorStop(1, col(0.9, 0.07, 78, 0))
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(s.x, s.y, 18, 0, 6.3)
+      ctx.fill()
+    }
   }
   ctx.restore()
 }

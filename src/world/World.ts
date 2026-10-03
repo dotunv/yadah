@@ -4,7 +4,8 @@ import { HYP, HYPS, confidence } from '../engine/hypotheses'
 import { revealLines, say, doubt, welcome, firstVisit, released } from '../engine/voice'
 import type { EntityId, HypId, Obs } from '../engine/types'
 import { render } from './draw'
-import { clamp, ease, lerp, rngOf, type Ent, type Enc, type Lamp, type Speck, type Whisper } from './scene'
+import { Sound } from './sound'
+import { clamp, ease, lerp, rngOf, type Ent, type Enc, type Lamp, type Mote, type Speck, type Whisper } from './scene'
 
 export type Phase = 'world' | 'reveal' | 'release'
 
@@ -40,6 +41,18 @@ export class World {
   motion = 1
   reduced = false
   focus: EntityId | null = null
+  motes: Mote[] = []
+  /** Where each letter of the floor wordmark sits, written by the renderer. */
+  letters: { x: number; y: number }[] = []
+  letterPulse = [0, 0, 0, 0, 0]
+  /** 0..1 — how much of the person Yadah has taken in. Lights the wordmark. */
+  know = 0
+  /** 0..1 — the lamp coming on at the start of a visit. */
+  ignite = 0
+  sound = new Sound()
+  private hinted = new Set<string>()
+  private noteCount = 0
+  private idleHinted = false
 
   // reveal
   revealT = 0
@@ -71,6 +84,8 @@ export class World {
     const i = brain.intent()
     this.atm = { hue: i.hue, chroma: i.chroma, lamp: i.lamp, pace: i.pace }
     this.spawn()
+    const rr = rngOf(31)
+    this.motes = Array.from({ length: 170 }, () => ({ x: rr() * this.w, y: rr() * this.h, z: 0.3 + rr() * 0.7, ph: rr() * 6.28 }))
     this.bind()
     // Where the lamp rests until someone moves it.
     this.lamp.x = this.lamp.tx = this.w * 0.5
@@ -95,7 +110,7 @@ export class World {
         r: 0, scale: 1, awake: 0, phase: this.rand() * 6.28,
         appearAt: (returning ? 3.2 : 0.8) + n * (returning ? 0.45 : 0.55), appear: 0, pop: 0,
         tx: hx, ty: hy, nextTarget: 0, trail: [], gaze: { x: 0, y: 0 }, blink: 0, nextBlink: 2 + this.rand() * 4,
-        open: 0, fleeing: 0, trusting: 0, drift: 0, rustle: 0, heading: 0,
+        open: 0, prox: 0, fleeing: 0, trusting: 0, drift: 0, rustle: 0, heading: 0,
         near: { on: false, since: 0, acc: 0, still: 0, touched: false },
         chaseAcc: 0, tempt: null,
       }
@@ -152,6 +167,7 @@ export class World {
       this.focus = null
     }
     const onDown = (e: PointerEvent) => {
+      this.sound.start()
       const r = c.getBoundingClientRect()
       this.lamp.tx = e.clientX - r.left
       this.lamp.ty = e.clientY - r.top
@@ -166,6 +182,7 @@ export class World {
     const onUp = () => (this.lamp.down = false)
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest?.('.debug')) return
+      this.sound.start()
       const arrows: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
       if (arrows[e.key]) {
         e.preventDefault()
@@ -211,6 +228,7 @@ export class World {
   destroy() {
     cancelAnimationFrame(this.raf)
     this.cleanup.forEach((f) => f())
+    this.sound.destroy()
   }
 
   /** A touch: with the pointer, or Enter beside something. */
@@ -283,6 +301,7 @@ export class World {
       // it does not let itself be caught
       this.obs({ t: 'slip', id: 'stranger' })
       this.obs({ t: 'touch', id: 'stranger', rank, via })
+      this.sound.thud()
       const ax = e.x - this.lamp.x
       const ay = e.y - this.lamp.y
       const d = Math.hypot(ax, ay) || 1
@@ -295,6 +314,7 @@ export class World {
     this.obs({ t: 'touch', id: e.id, rank, via })
     this.lastTouch = { x: e.x, y: e.y }
     e.pop = 0.28
+    this.sound.pluck(e.id)
     const mem = this.brain.profile.entities[e.id]
     if (e.id === 'archivist' && this.brain.profile.marks.length === 0) {
       this.whisperAt(e, say('archivist', mem, 'empty'))
@@ -383,6 +403,8 @@ export class World {
         enc.done = true
         enc.leaveAt = this.t + 3
         this.obs({ t: 'complete', id: enc.id })
+        this.sound.chime(enc.id)
+        if (this.brain.session.touched.length < 3) this.nudge('others', 'there are others.', this.w * 0.5, this.h * 0.14, 3)
         this.whisperAt(e, say(enc.id, this.brain.profile.entities[enc.id], 'done'))
       }
     }
@@ -396,6 +418,10 @@ export class World {
   // ───────────────────────────── observations & voice ─────────────────────────────
   private obs(o: Obs) {
     const events = this.brain.observe(o)
+    // let the person see that it was noticed: a mote of light travels into the floor
+    if (o.t === 'dwell' || o.t === 'touch' || o.t === 'mark' || o.t === 'complete' || o.t === 'chase' || o.t === 'probe') {
+      this.specks.push({ x: this.lamp.x, y: this.lamp.y, to: 'word', letter: this.noteCount++ % 5, t0: this.t })
+    }
     for (const ev of events) {
       if (ev.type === 'revised') {
         const probed = HYP[ev.hyp].probe?.entity
@@ -425,6 +451,37 @@ export class World {
     this.say(text, x, clamp(y, 44, this.h - 30), { t0: this.t + delay, dur: 5.2, size, tint: e.def.hue })
   }
 
+  /** A hint, said once, in Yadah's voice, only while it still matters. */
+  private nudge(key: string, text: string, x: number, y: number, delay = 0) {
+    if (this.hinted.has(key)) return
+    this.hinted.add(key)
+    this.say(text, clamp(x, 20, this.w - text.length * 11 - 20), clamp(y, 40, this.h - 30), { t0: this.t + delay, dur: 5, size: 22 })
+  }
+
+  private hintFor(e: Ent) {
+    const m = this.brain.profile.entities[e.id]
+    if (m.touches > 0) return
+    const t = this.t
+    const near = e.near
+    if (!near.on) return
+    const HINT: Record<EntityId, string> = {
+      listener: 'hold still beside it.',
+      wanderer: 'it won’t wait for you.',
+      mirror: 'move. watch it.',
+      archivist: 'stay somewhere. it keeps what you leave.',
+      stranger: 'don’t chase it.',
+      witness: 'it is looking at you.',
+      seed: 'it wants to be touched.',
+    }
+    if (near.acc > 0.7 && !this.hinted.has('near:' + e.id)) {
+      this.hinted.add('near:' + e.id)
+      this.whisperAt(e, HINT[e.id])
+      this.sound.pluck(e.id, 1, 0.05)
+      e.pop = 0.18
+    }
+    if (t - near.since > 6 && !near.touched) this.nudge('touch', 'touch it.', e.x - 30, e.y - e.r * e.scale * 1.7 - 18)
+  }
+
   // ───────────────────────────── the reveal ─────────────────────────────
   startReveal() {
     if (this.phase !== 'world') return
@@ -451,6 +508,7 @@ export class World {
     this.brain.reveal()
     this.phase = 'release'
     this.releaseT = 0
+    this.sound.release()
     this.hooks.phase?.('release')
     this.hooks.awaiting?.(false)
     this.awaiting = false
@@ -520,16 +578,19 @@ export class World {
     this.updateEnc(dt)
     this.marking(dt)
     this.updateBeacon(dt)
+    this.alive(dt)
 
-    // specks fly to the archivist
+    // specks: motes of memory flying to where they will be kept
     for (const s of this.specks) {
-      const a = this.byId[s.to]
-      const p = clamp((this.t - s.t0) / 1.4)
-      s.x = lerp(s.x, a.x, p * p * 0.18 + 0.02)
-      s.y = lerp(s.y, a.y, p * p * 0.18 + 0.02)
-      if (p >= 1) a.rustle = 1
+      const p = clamp((this.t - s.t0) / 1.6)
+      const tgt = s.to === 'word' ? this.letters[s.letter] ?? { x: this.w * 0.5, y: this.h * 0.5 } : this.byId[s.to]
+      s.x = lerp(s.x, tgt.x, 0.02 + p * p * 0.2)
+      s.y = lerp(s.y, tgt.y, 0.02 + p * p * 0.2)
+      if (p >= 1 && s.to === 'word') this.letterPulse[s.letter] = 1
+      if (p >= 1 && s.to !== 'word') this.byId[s.to].rustle = 1
     }
-    this.specks = this.specks.filter((s) => this.t - s.t0 < 1.4)
+    for (let i = 0; i < 5; i++) this.letterPulse[i] = Math.max(0, this.letterPulse[i] - dt * 0.5)
+    this.specks = this.specks.filter((s) => this.t - s.t0 < 1.6)
     this.whispers = this.whispers.filter((w) => this.t < w.t0 + w.dur + 0.5)
 
     // reveal / release timelines
@@ -551,6 +612,53 @@ export class World {
     }
   }
 
+  /** The small constant signs of life: dust, waking, and being learned. */
+  private alive(dt: number) {
+    const L = this.lamp
+    const p = this.brain.profile
+    this.ignite = Math.min(1, this.ignite + dt / 3.2)
+    // how much of this person has been taken in
+    const bonds = ENTITIES.reduce((a, d) => a + p.entities[d.id].bond, 0)
+    const held = HYPS.filter((h) => p.hyps[h.id].status === 'held').length
+    const know = clamp(bonds / 2.4 + held * 0.1 + Math.min(1, p.marks.length / 50) * 0.15)
+    this.know = lerp(this.know, know, 1 - Math.exp(-dt * 0.6))
+
+    const prox = {} as Record<EntityId, number>
+    const bond = {} as Record<EntityId, number>
+    for (const e of this.ents) {
+      prox[e.id] = e.prox
+      bond[e.id] = p.entities[e.id].bond
+      this.hintFor(e)
+    }
+    this.sound.update(prox, bond, L.speed, this.hush)
+
+    // dust, drifting on a slow current and stirred by the lamp
+    const mo = this.motion * this.atm.pace
+    for (const m of this.motes) {
+      const a = Math.sin(m.x * 0.004 + this.t * 0.07) * 2 + Math.cos(m.y * 0.005 - this.t * 0.06) * 2 + m.ph
+      m.x += Math.cos(a) * 9 * m.z * mo * dt
+      m.y += (Math.sin(a) * 6 - 3 * m.z) * mo * dt
+      const dx = m.x - L.x
+      const dy = m.y - L.y
+      const d2 = dx * dx + dy * dy
+      if (d2 < 26000 && this.ignite > 0.5) {
+        const f = (1 - d2 / 26000) * 70 * dt
+        m.x += (dx / (Math.sqrt(d2) + 1)) * f + L.vx * 0.006 * m.z
+        m.y += (dy / (Math.sqrt(d2) + 1)) * f + L.vy * 0.006 * m.z
+      }
+      if (m.x < -10) m.x = this.w + 10
+      if (m.x > this.w + 10) m.x = -10
+      if (m.y < -10) m.y = this.h + 10
+      if (m.y > this.h + 10) m.y = -10
+    }
+
+    // someone who hasn't moved the light yet needs to be told it can be moved
+    if (!L.moved && this.t > 7 && !this.idleHinted && this.phase === 'world') {
+      this.idleHinted = true
+      this.say('move the light.', this.w * 0.5 - 70, this.h * 0.74, { t0: this.t, dur: 6, size: 24 })
+    }
+  }
+
   private updateEnt(e: Ent, n: number, dt: number, intent: ReturnType<Brain['intent']>) {
     const L = this.lamp
     const it = intent.entities[e.id]
@@ -560,7 +668,10 @@ export class World {
     e.appear = clamp((this.t - e.appearAt) / 2.2)
     e.phase += dt * (0.7 + e.awake * 0.6) * mo
     e.pop = lerp(e.pop, 0, 1 - Math.exp(-dt * 3))
-    e.awake = lerp(e.awake, it.awake, 1 - Math.exp(-dt * 0.6))
+    const dl = Math.hypot(L.x - e.x, L.y - e.y)
+    e.prox = lerp(e.prox, L.moved ? clamp(1 - dl / 560) : 0, 1 - Math.exp(-dt * 2))
+    // things wake as the lamp comes near, and sleep again when it leaves
+    e.awake = lerp(e.awake, Math.max(it.awake, e.prox * 0.7), 1 - Math.exp(-dt * 0.9))
     const sc = this.enc?.id === e.id ? (e.id === 'wanderer' ? 2 : 2.5) : 1
     e.scale = lerp(e.scale, it.scale * sc, 1 - Math.exp(-dt * (this.enc?.id === e.id ? 2.4 : 1.2)))
     e.rustle = lerp(e.rustle, 0, 1 - Math.exp(-dt * 1.5))
@@ -658,6 +769,7 @@ export class World {
         break
       }
       case 'archivist':
+        if (this.t % 9 < dt) e.rustle = Math.max(e.rustle, 0.6)
         if (inEnc) {
           tx = cx
           ty = cy
@@ -697,14 +809,23 @@ export class World {
           k = 2 + 4 * wary
         } else {
           e.trusting = Math.max(0, e.trusting - dt * 0.2)
+          if (L.moved && toL < 760 && wary < 0.8) {
+            // curious, from a distance: it circles the lamp without coming close
+            const a = Math.atan2(e.y - L.y, e.x - L.x) + 0.35 * Math.sin(this.t * 0.2)
+            const r = 400 + 50 * Math.sin(this.t * 0.3)
+            tx = clamp(L.x + Math.cos(a) * r, 40, this.w - 40)
+            ty = clamp(L.y + Math.sin(a) * r, 40, this.h - 40)
+            k = 0.5
+          }
         }
         e.fleeing = Math.max(0, e.fleeing - dt)
         break
       }
       case 'witness': {
         const lag = 1 - Math.exp(-dt * (inEnc ? 4 : 1.1))
-        const gx = (L.px - e.x) / 400
-        const gy = (L.py - e.y) / 400
+        const idle = !L.moved || this.t - L.lastMoveAt > 4
+        const gx = idle ? Math.sin(this.t * 0.37 + 1) * 0.9 : (L.px - e.x) / 400
+        const gy = idle ? Math.cos(this.t * 0.29) * 0.5 : (L.py - e.y) / 400
         e.gaze.x += (clamp(gx, -1, 1) - e.gaze.x) * lag
         e.gaze.y += (clamp(gy, -1, 1) - e.gaze.y) * lag
         e.nextBlink -= dt
@@ -830,7 +951,7 @@ export class World {
         }
       }
       this.obs({ t: 'mark', mark: { x: L.x / this.w, y: L.y / this.h, w: clamp(this.markAcc / 6, 0.2, 1), e: near } })
-      this.specks.push({ x: L.x, y: L.y, to: 'archivist', t0: this.t })
+      this.specks.push({ x: L.x, y: L.y, to: 'archivist', letter: 0, t0: this.t })
       this.markAcc = -3
     }
   }

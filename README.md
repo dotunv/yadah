@@ -84,6 +84,20 @@ slow light. The room goes quiet. It says what it noticed, one line at a time, en
 where the relationship says it belongs, and the air takes on the colour of what you chose.
 Before the reveal the relationship is only partly expressed; after it, fully.
 
+## The first minute
+
+A first visit has to feel alive and has to teach itself without a menu:
+
+- The lamp ignites, and the seven presences arrive one at a time, each leaving a ring.
+- Everything has its own life while you do nothing: the listener sends out rings, the witness looks
+  around and blinks, the archivist rustles, the stranger circles you from a distance, dust drifts.
+- Things wake as the lamp nears, and the first time you come close to one it says what it wants
+  ("hold still beside it", "don't chase it", "it is looking at you", then "touch it").
+- You can watch yourself being learned. Each time Yadah registers something, a mote of light leaves
+  the lamp and flies into a letter of the *yadah* on the floor. The letters fill in as it takes you in.
+- Sound: every presence owns one note of a quiet chord, and it only sings as you grow close to it.
+  The room literally sounds like your history. Sound starts on your first touch and can be turned off.
+
 ## Accessibility and privacy
 
 - Keyboard: arrows move the lamp, Tab visits each presence, Enter touches. Focus is drawn in the room.

@@ -34,6 +34,8 @@ export interface Ent {
   blink: number
   nextBlink: number
   open: number
+  /** 0..1 — how near the lamp is. Things wake as you approach. */
+  prox: number
   fleeing: number
   trusting: number
   /** Slow outward drift when it has been ignored this visit. */
@@ -61,8 +63,18 @@ export interface Whisper {
 export interface Speck {
   x: number
   y: number
-  to: EntityId
+  /** Flies to an entity (the archivist) or into one letter of the floor wordmark. */
+  to: EntityId | 'word'
+  letter: number
   t0: number
+}
+
+/** A mote of dust in the air, lit only where the lamp reaches. */
+export interface Mote {
+  x: number
+  y: number
+  z: number
+  ph: number
 }
 
 export interface Lamp {
